@@ -1,0 +1,8 @@
+fastargs
+matplotlib
+scikit-learn
+pandas
+assertpy
+tqdm
+wandb
+git+https://github.com/StephanLorenzen/MajorityVoteBounds
