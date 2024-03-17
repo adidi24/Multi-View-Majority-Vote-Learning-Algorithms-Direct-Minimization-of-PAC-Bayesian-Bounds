@@ -24,6 +24,9 @@ from torch.utils.data import DataLoader,Dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
+from lamb import optimizeLamb_mv_torch
+
+
 def uniform_distribution(m):
     return np.full((m,), 1.0/m)
 
@@ -199,55 +202,52 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         self.used_feature_rate = used_feature_rate
         self.posterior = posterior if posterior is not None else uniform_distribution(nb_estimators)
         self._abc_pi = uniform_distribution(nb_estimators)  # Initialize the weights with the uniform distribution
-        self._OOB = None  # Some fitting stats
+        self._OOB = []
         
     def fit(self, X, y):
+        
         # Check that X and y have correct shape
         for i in range(self.nb_views):
             X[i], y = check_X_y(X[i], y)
             
         
         
-        # Create estimators
+        # Create estimators for each views
         self._estimators_views = [[
-            DeepNeuralDecisionForests(depth=self.depth, n_in_feature=self.n_in_feature, used_feature_rate=self.used_feature_rate)
-            for _ in range(self.nb_estimators)]for _ in range(self.nb_views)]
-        len(self._estimators_views)
+            DeepNeuralDecisionForests(depth=self.depth, n_in_feature=X[i].shape[1], used_feature_rate=self.used_feature_rate)
+            for _ in range(self.nb_estimators)]for i in range(self.nb_views)]
         
-        # self._estimators_views = [self._estimators.copy() for _ in range(self.nb_views)]
+        self.classes_ = unique_labels(y)
+        self.X_ = X
+        self.y_ = y
         
-        
-        # X, y = check_X_y(X, y)
-        # self.classes_ = unique_labels(y)
-        # self.X_ = X
-        # self.y_ = y
-        
-        # preds = []
-        # n = X.shape[0]  # Number of samples
-        
-        # for est in self._estimators:
-        #     # Sample points for training (w. replacement)
-        #     while True:
-        #         t_idx = self._prng.randint(n, size=n)
-        #         t_X = self.X_[t_idx]
-        #         t_Y = self.y_[t_idx]
-        #         if np.unique(t_Y).shape[0] == len(self.classes_):
-        #             break
-
-        #     oob_idx = np.delete(np.arange(n), np.unique(t_idx))
-        #     oob_X = X[oob_idx]
+        for i in range(self.nb_views):
+            preds = []
+            n = self.X_[i].shape[0]  # Number of samples
             
-        #     est.fit(t_X, t_Y)  # Fit this estimator
-        #     oob_P = est.predict(oob_X)  # Predict on OOB
-
-        #     M_est = np.zeros(self.y_.shape)
-        #     P_est = np.zeros(self.y_.shape)
-        #     M_est[oob_idx] = 1
-        #     P_est[oob_idx] = oob_P
-        #     preds.append((M_est, P_est))
-            
-
-        # self._OOB = (preds, self.y_)
+            for est in self._estimators_views[i]:
+                # Sample points for training (w. replacement)
+                while True:
+                    t_idx = self._prng.randint(n, size=n)
+                    t_X = self.X_[i][t_idx]
+                    t_Y = self.y_[t_idx]
+                    if np.unique(t_Y).shape[0] == len(self.classes_):
+                        break
+    
+                oob_idx = np.delete(np.arange(n), np.unique(t_idx))
+                oob_X = self.X_[i][oob_idx]
+                
+                est.fit(t_X, t_Y)  # Fit this estimator
+                oob_P = est.predict(oob_X)  # Predict on OOB
+    
+                M_est = np.zeros(self.y_.shape)
+                P_est = np.zeros(self.y_.shape)
+                M_est[oob_idx] = 1
+                P_est[oob_idx] = oob_P
+                preds.append((M_est, P_est))
+                
+    
+            self._OOB.append((preds, self.y_))
         return self
     
     def predict(self, X):
@@ -256,38 +256,46 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         closest = np.argmin(euclidean_distances(X, self.X_), axis=1)
         return self.y_[closest]
     
-    def  optimize_rho(self, bound, labeled_data=None, incl_oob=True):
+    def  optimize_rho(self, bound, labeled_data=None, incl_oob=True, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0.1):
         check_is_fitted(self)
         
         if bound == 'Lambda':
-            risks, ns = self.risks(labeled_data, incl_oob)
-            print(risks/ns)
-        
+            risks_views, ns_views = self.risks(labeled_data, incl_oob)
+            emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
+            ns_min_values = [np.min(ns) for ns in ns_views]
+
+            posterior_Qv, posterior_rho = optimizeLamb_mv_torch(emp_risks_views, ns_min_values)
+        return posterior_Qv, posterior_rho       
+            
 
         
 
     def risks(self, data=None, incl_oob=True):
         check_is_fitted(self)
-        m = self.nb_estimators
-        n = np.zeros((m,))
-        risks = np.zeros((m,))
+        risks_views = []
+        n_views     = []
+        for i in range(self.nb_views):
+            m = self.nb_estimators
+            n = np.zeros((m,))
+            risks = np.zeros((m,))
+            if incl_oob:
+                (preds, targs) = self._OOB[i]
+                # preds = [(idx, preds)] * n_estimators
+                orisk, on = self.oob_risks(preds, targs)
+                n += on
+                risks += orisk
+                n_views.append(n)
+                risks_views.append(risks)
+    
+            if data is not None:
+                assert (len(data) == 2)
+                X, Y = data
+                P = self.predict_all(X)
+    
+                n += X[i].shape[0]
+                risks += self.risks_(P, Y)
 
-        if incl_oob:
-            (preds, targs) = self._OOB
-            # preds = [(idx, preds)] * n_estimators
-            orisk, on = self.oob_risks(preds, targs)
-            n += on
-            risks += orisk
-
-        if data is not None:
-            assert (len(data) == 2)
-            X, Y = data
-            P = self.predict_all(X)
-
-            n += X.shape[0]
-            risks += self.risks_(P, Y)
-
-        return risks, n
+        return risks_views, n_views
     
     def oob_risks(self, preds, targs):
         m     = len(preds)
