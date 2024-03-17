@@ -106,11 +106,118 @@ def mv_lamb(emp_risks_views, n, delta=0.05):
 
     return min(1.0,2.0*bound)
 
+def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb):
+    # Appliquer softmax pour normaliser posterior_Qv et posterior_rho
+    softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
+    softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
+
+    # Calculer les risques empiriques en utilisant les versions normalisées
+    emp_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
+    emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
+
+    # Calculer KL divergence en utilisant les versions normalisées
+    KL_QP = torch.sum(torch.stack([kl(q, p) * softmax_posterior_rho for q, p in zip(softmax_posterior_Qv, prior_Pv)]))
+    KL_rhopi = kl(softmax_posterior_rho, prior_pi)
+    lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+
+
+    # Calculer la perte totale
+    loss = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
+
+    return loss
+
+# def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0):
+#     m = len(emp_risks_views[0])
+#     v = len(emp_risks_views)
+#     n = torch.tensor(np.min(ns_min_values))
+#     print(emp_risks_views)
+#     # Initialisation des distributions
+#     prior_Pv = [uniform_distribution(m) for k in range(v)]
+#     posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
+
+#     prior_pi = uniform_distribution(v)
+#     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
+    
+#     lamb = 1.0
+#     # print(f"{rho=}")`
+#     emp_risks = [torch.sum(torch.tensor(view) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
+#     emp_mv_risk = torch.sum(torch.stack(emp_risks)*posterior_rho)
+#     # print(f"{emp_mv_risk=}")
+#     KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
+
+#     KL_rhopi = kl(posterior_rho,prior_pi)
+
+#     upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+#     bound = upd+2*eps
+#     print("Bound:", bound)
+#     print("Upd:", upd)
+#     print("Différence:", bound - upd)
+    
+#     all_parameters = list(posterior_Qv) + [posterior_rho]
+#     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
+
+    
+#     for i in range(100):
+        
+        
+#         optimizer.zero_grad()
+#         # print('test',F.softmax(posterior_Qv[0], dim=0))
+#         print(posterior_Qv[0])
+#         print(posterior_rho)
+#         # Recalculer emp_risks, emp_mv_risk, KL_QP, KL_rhopi à partir des valeurs actuelles de posterior_Qv et posterior_rho
+#         emp_risks = [torch.sum(torch.tensor(view) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
+#         emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
+#         KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
+#         KL_rhopi = kl(posterior_rho, prior_pi)
+#         # l2_penalty = torch.sum(torch.stack([torch.norm(q, p=2) for q in posterior_Qv]))
+#         # sum_penalty = torch.sum(torch.stack([(q.sum() - 1)**2 for q in posterior_Qv]))
+        
+#         # Recalculer upd et bound en utilisant les nouvelles valeurs de emp_mv_risk, KL_QP, KL_rhopi
+#         upd = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
+#         # upd += lambda_l2*l2_penalty 
+        
+#         # Mise à jour de lamb si nécessaire
+#         lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+#         # Nouveau calcul de bound pour la condition de la boucle
+#         bound = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
+#         # l2_penalty = torch.sum(torch.stack([torch.norm(q, p=2) for q in posterior_Qv]))
+#         # sum_penalty = torch.sum(torch.stack([(q.sum() - 1)**2 for q in posterior_Qv]))
+        
+#         # bound += lambda_l2*l2_penalty
+
+#         # Rétropropagation et mise à jour des paramètres
+#         bound.backward()
+#         optimizer.step()
+#         with torch.no_grad():
+#             for q in posterior_Qv:
+#                 q.clamp_(1/(m*10),1-1/(m*10))
+#                 q.div_(torch.norm(F.relu(q), p=1))
+#                 # q[:] = F.softmax(q, dim=0)
+                
+                
+#             posterior_rho.clamp_(1/(v*10),1-1/(v*10))
+#             posterior_rho.div_(torch.norm(F.relu(posterior_rho), p=1))
+#             # posterior_rho[:] = F.softmax(posterior_rho, dim=0)
+            
+#         # Condition de sortie
+#         # if torch.abs(bound - upd) <= eps:
+#         #     break                
+            
+    
+#     # print("Bound après mise à jour:", bound)
+#     # print("Upd après mise à jour:", upd)
+#     # print("Différence:", abs(bound - upd))
+        
+#     # posterior_Qv = [F.softmax(param, dim=0) for param in posterior_Qv]
+#     # posterior_rho = F.softmax(posterior_rho, dim=0)
+
+
+#     return posterior_Qv, posterior_rho
 
 def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0):
     m = len(emp_risks_views[0])
     v = len(emp_risks_views)
-    n = torch.tensor(np.min(ns_min_values), dtype=torch.float64)
+    n = torch.tensor(np.min(ns_min_values))
     print(emp_risks_views)
     # Initialisation des distributions
     prior_Pv = [uniform_distribution(m) for k in range(v)]
@@ -121,7 +228,7 @@ def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9
     
     lamb = 1.0
     # print(f"{rho=}")`
-    emp_risks = [torch.sum(torch.tensor(view, dtype=torch.float64) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
+    emp_risks = [torch.sum(torch.tensor(view) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
     emp_mv_risk = torch.sum(torch.stack(emp_risks)*posterior_rho)
     # print(f"{emp_mv_risk=}")
     KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
@@ -135,82 +242,58 @@ def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9
     print("Différence:", bound - upd)
     
     all_parameters = list(posterior_Qv) + [posterior_rho]
-    optimizer = optim.SGD(all_parameters, lr=0.01, momentum=0.9)
+    optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
 
     
+    prev_loss = float('inf')
+
+    # Dans votre boucle d'optimisation
     for i in range(100):
-        
-        
         optimizer.zero_grad()
-        # print('test',F.softmax(posterior_Qv[0], dim=0))
-        print(posterior_Qv[0])
-        print(posterior_rho)
-        # Recalculer emp_risks, emp_mv_risk, KL_QP, KL_rhopi à partir des valeurs actuelles de posterior_Qv et posterior_rho
-        emp_risks = [torch.sum(torch.tensor(view, dtype=torch.float64) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-        emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
-        KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-        KL_rhopi = kl(posterior_rho, prior_pi)
-        # l2_penalty = torch.sum(torch.stack([torch.norm(q, p=1) for q in posterior_Qv]))
-        # sum_penalty = torch.sum(torch.stack([(q.sum() - 1)**2 for q in posterior_Qv]))
-        
-        # Recalculer upd et bound en utilisant les nouvelles valeurs de emp_mv_risk, KL_QP, KL_rhopi
-        upd = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-        # upd += lambda_l2*l2_penalty + lambda_sum*sum_penalty 
-        
-        # Mise à jour de lamb si nécessaire
-        lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
-        
-        # Nouveau calcul de bound pour la condition de la boucle
-        bound = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-        # l2_penalty = torch.sum(torch.stack([torch.norm(q, p=1) for q in posterior_Qv]))
-        # sum_penalty = torch.sum(torch.stack([(q.sum() - 1)**2 for q in posterior_Qv]))
-        
-        # bound += lambda_l2*l2_penalty + lambda_sum*sum_penalty
-
-        # Rétropropagation et mise à jour des paramètres
-        bound.backward()
-        optimizer.step()
-        with torch.no_grad():
-            # Projection pour s'assurer que les poids restent dans l'espace admissible
-            for q in posterior_Qv:
-                print("Avant normalisation et clampage:", q)
-                q /= q.sum()  # Normalise chaque distribution q pour que sa somme soit égale à 1
-                q.clamp_(1/(m*10),1-1/(m*10))  # Assure que les poids sont positifs
-            
-            posterior_rho /= posterior_rho.sum()  # Normalise posterior_rho pour que sa somme soit égale à 1
-            posterior_rho.clamp_(1/(v*10),1-1/(v*10))  # Assure que les poids sont positifs   
-            
-        # Condition de sortie
-        if torch.abs(bound - upd) <= eps:
-            break                
-            
     
-    # print("Bound après mise à jour:", bound)
-    # print("Upd après mise à jour:", upd)
-    # print("Différence:", abs(bound - upd))
-        
-    # posterior_Qv = [F.softmax(param, dim=0) for param in posterior_Qv]
-    # posterior_rho = F.softmax(posterior_rho, dim=0)
+        # Calculer la perte
+        loss = compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
+    
+        # Rétropropagation
+        loss.backward()
+    
+        # Mise à jour des paramètres
+        optimizer.step()
+    
+        # Vérifier la condition de sortie basée sur le changement de la perte
+        if torch.abs(prev_loss - loss).item() <= eps:
+            break
+    
+        prev_loss = loss.item()  # Mettre à jour prev_loss avec la valeur actuelle de la perte
+    
+        # Optionnel: Afficher la perte pour le suivi
+        print(f"Iteration {i}, Loss: {loss.item()}")
 
-
+    # Après la boucle d'optimisation
+    with torch.no_grad():
+        softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
+        softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
     return posterior_Qv, posterior_rho
-
 
 # def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9, lambda_sum=1, lambda_l2=0):
 #     m = len(emp_risks_views[0])
 #     v = len(emp_risks_views)
 #     n = torch.tensor(np.min(ns_min_values), dtype=torch.float64)
-#     print(emp_risks_views)
     
 #     # Initialisation des distributions
 #     prior_Pv = [uniform_distribution(m) for k in range(v)]
 #     posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
 #     prior_pi = uniform_distribution(v)
 #     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
+#     emp_risks = [torch.sum(torch.tensor(view, dtype=torch.float64) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
+#     emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
+#     KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
+#     KL_rhopi = kl(posterior_rho, prior_pi)
     
 #     # Regroupement de tous les paramètres pour l'optimiseur
 #     all_parameters = list(posterior_Qv) + [posterior_rho]
-#     optimizer = optim.LBFGS(all_parameters, lr=0.001,max_iter=1)
+#     optimizer = optim.LBFGS(all_parameters, lr=0.1,max_iter=1)
+
 
 #     def closure():
 #         optimizer.zero_grad()
@@ -234,16 +317,13 @@ def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9
 #         optimizer.step(closure)
         
 #         with torch.no_grad():
-#             # Projection pour s'assurer que les poids restent dans l'espace admissible
-#             for q in posterior_Qv:
+#             # Application de softmax pour s'assurer que les poids sont des distributions de probabilités
+#             for k, q in enumerate(posterior_Qv):
 #                 print("Avant normalisation et clampage:", q)
-#                 q /= q.sum()  # Normalise chaque distribution q pour que sa somme soit égale à 1
-#                 q.clamp_(min=0)  # Assure que les poids sont positifs
+#                 posterior_Qv[k] = torch.nn.Parameter(torch.softmax(q, dim=0))
 #                 print("Après normalisation et clampage:", q)
-
             
-#             posterior_rho /= posterior_rho.sum()  # Normalise posterior_rho pour que sa somme soit égale à 1
-#             posterior_rho.clamp_(min=0)  # Assure que les poids sont positifs   
+#             posterior_rho.data = torch.softmax(posterior_rho, dim=0)  
 
 #     return posterior_Qv, posterior_rho
 
