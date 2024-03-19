@@ -1,0 +1,7 @@
+*.pyc
+*__pycache__*
+*.DS_Store*
+rcv1rcv2aminigoutte
+Reuters-rcv1-rcv2
+data/mfeat/
+data/sample_data/
