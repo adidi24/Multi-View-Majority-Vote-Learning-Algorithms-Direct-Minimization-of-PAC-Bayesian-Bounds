@@ -6,19 +6,31 @@
 #  A strongly quasiconvex385PAC-Bayesian bound. InAlgorithmic Learning Theory (ALT), 2017] 
 #
 
+import numpy as np
+from math import ceil, log, sqrt, exp
+
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-
-import numpy as np
-
-from math import ceil, log, sqrt, exp
-from util import kl, uniform_distribution
+from mvpb.util import kl, uniform_distribution
 
 
-# Compute PAC-Bayes-Lambda-bound:
+# PAC-Bayes-Lambda-bound:
 def lamb(emp_risk, n, KL_qp, delta=0.05):
+    """
+    Calculate the value of lambda and the corresponding bound.
+
+    Parameters:
+    - emp_risk (float): The empirical risk.
+    - n (int): The number of samples.
+    - KL_qp (float): The Kullback-Leibler divergence between the prior and posterior distributions.
+    - delta (float, optional): The confidence level. Default is 0.05.
+
+    Returns:
+    - float: The minimum of 1.0 and 2.0 times the calculated bound.
+
+    """
     n = float(n)
 
     lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_qp+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
@@ -26,14 +38,138 @@ def lamb(emp_risk, n, KL_qp, delta=0.05):
 
     return min(1.0,2.0*bound)
 
-# Compute MV-PAC-Bayes-Lambda-bound:
+# MV-PAC-Bayes-Lambda-bound:
 def mv_lamb(emp_mv_risk, n, KL_qp, KL_rhopi, delta=0.05):
+    """
+    Calculate the value of lambda and the corresponding multiview bound.
+
+    Parameters:
+    - emp_risk (float): The weighted sum of the empirical risk of each view.
+    - n (int): The number of samples.
+    - KL_qp (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
+    - KL_rhopi (float): The Kullback-Leibler divergence between the hyper-prior and hyper-posterior distributions.
+    - delta (float, optional): The confidence level. Default is 0.05.
+
+    Returns:
+    - float: The calculated PB-lambda bound.
+
+    """
     n = float(n)
 
     lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_qp+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
     bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
 
     return min(1.0,2.0*bound)
+
+def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb):
+    """
+    Compute the loss function for the Multi-View Majority Vote Learning algorithm.
+
+    Args:
+        emp_risks_views (list): A list of empirical risks for each view.
+        posterior_Qv (list): A list of posterior distributions for each view.
+        posterior_rho (tensor): The hyper-posterior distribution for the weights.
+        prior_Pv (list): A list of prior distributions for each view.
+        prior_pi (tensor): The hyper-prior distribution for the weights.
+        n (int): The number of samples.
+        delta (float): The confidence parameter.
+        lamb (float): lambda.
+
+    Returns:
+        tensor: The computed loss value.
+
+    """
+    
+    # Apply softmax to ensure that the weights are probability distributions
+    softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
+    softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
+
+    # Calculate the empirical risk
+    emp_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
+    emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
+
+    # Calculate the Kullback-Leibler divergences
+    KL_QP = torch.sum(torch.stack([kl(q, p) * softmax_posterior_rho for q, p in zip(softmax_posterior_Qv, prior_Pv)]))
+    KL_rhopi = kl(softmax_posterior_rho, prior_pi)
+    lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+
+
+    loss = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
+    
+    return loss
+
+
+def optimizeLamb_mv_torch(emp_risks_views, n, delta=0.05, eps=10**-9):
+    """
+    Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
+
+    Args:
+        emp_risks_views (list): A list of empirical risks for each view.
+        n (list): The number of samples.
+        delta (float, optional): The confidence level. Default is 0.05.
+        eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
+
+    Returns:
+        tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
+    """
+    
+    m = len(emp_risks_views[0])
+    v = len(emp_risks_views)
+    # print(emp_risks_views)
+    
+    # Initialisation with the uniform distribution
+    prior_Pv = [uniform_distribution(m)]*v
+    posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
+
+    prior_pi = uniform_distribution(v)
+    posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
+    
+    lamb = 1.0
+    # print(f"{rho=}")
+    emp_risks = [torch.sum(torch.tensor(view) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
+    emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
+    # print(f"{emp_mv_risk=}")
+    
+    KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
+    KL_rhopi = kl(posterior_rho,prior_pi)
+
+    upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+    bound = upd+2*eps
+    print(f"{bound=}")
+    print(f"{upd=}")
+    print(f"Difference: {bound - upd}")
+    
+    all_parameters = list(posterior_Qv) + [posterior_rho]
+    optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
+
+    prev_loss = float('inf')
+
+    # Optimisation loop
+    for i in range(100):
+        optimizer.zero_grad()
+    
+        # Calculating the loss
+        loss = compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
+    
+        loss.backward() # Backpropagation
+    
+        optimizer.step() # Update the parameters
+    
+        # Verify the convergence criteria of the loss
+        if torch.abs(prev_loss - loss).item() <= eps:
+            break
+    
+        prev_loss = loss.item()  # Update the previous loss with the current loss
+    
+        # Optionnel: Afficher la perte pour le suivi
+        print(f"Iteration: {i},\t Loss: {loss.item()}")
+
+    # After the optimization
+    with torch.no_grad():
+        softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
+        softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
+    return posterior_Qv, posterior_rho
+
 
 # Optimize PAC-Bayes-Lambda-bound:
 def optimizeLamb(emp_risks, n, delta=0.05, eps=10**-9, abc_pi=None):
@@ -95,36 +231,6 @@ def optimizeLamb_mv(emp_risks, KL_qps, n, delta=0.05, eps=10**-9):
         
         upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
     return bound, rho, lamb, KL_rhopi, emp_mv_risk
-
-
-def mv_lamb(emp_risks_views, n, delta=0.05):
-    n = float(n)
-    
-    emp_risks_views = np.average(emp_risks_views, weights=posterior)
-    lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_qp+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-    bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-
-    return min(1.0,2.0*bound)
-
-def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb):
-    # Appliquer softmax pour normaliser posterior_Qv et posterior_rho
-    softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
-    softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
-
-    # Calculer les risques empiriques en utilisant les versions normalisées
-    emp_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
-    emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
-
-    # Calculer KL divergence en utilisant les versions normalisées
-    KL_QP = torch.sum(torch.stack([kl(q, p) * softmax_posterior_rho for q, p in zip(softmax_posterior_Qv, prior_Pv)]))
-    KL_rhopi = kl(softmax_posterior_rho, prior_pi)
-    lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
-
-
-    # Calculer la perte totale
-    loss = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-
-    return loss
 
 # def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0):
 #     m = len(emp_risks_views[0])
@@ -212,68 +318,10 @@ def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_p
 #     # posterior_rho = F.softmax(posterior_rho, dim=0)
 
 
-#     return posterior_Qv, posterior_rho
+#     return posterior_Qv, posterior_rhov
 
-def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0):
-    m = len(emp_risks_views[0])
-    v = len(emp_risks_views)
-    n = torch.tensor(np.min(ns_min_values))
-    print(emp_risks_views)
-    # Initialisation des distributions
-    prior_Pv = [uniform_distribution(m) for k in range(v)]
-    posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
 
-    prior_pi = uniform_distribution(v)
-    posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
-    
-    lamb = 1.0
-    # print(f"{rho=}")`
-    emp_risks = [torch.sum(torch.tensor(view) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-    emp_mv_risk = torch.sum(torch.stack(emp_risks)*posterior_rho)
-    # print(f"{emp_mv_risk=}")
-    KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-
-    KL_rhopi = kl(posterior_rho,prior_pi)
-
-    upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-    bound = upd+2*eps
-    print("Bound:", bound)
-    print("Upd:", upd)
-    print("Différence:", bound - upd)
-    
-    all_parameters = list(posterior_Qv) + [posterior_rho]
-    optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
-
-    
-    prev_loss = float('inf')
-
-    # Dans votre boucle d'optimisation
-    for i in range(100):
-        optimizer.zero_grad()
-    
-        # Calculer la perte
-        loss = compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
-    
-        # Rétropropagation
-        loss.backward()
-    
-        # Mise à jour des paramètres
-        optimizer.step()
-    
-        # Vérifier la condition de sortie basée sur le changement de la perte
-        if torch.abs(prev_loss - loss).item() <= eps:
-            break
-    
-        prev_loss = loss.item()  # Mettre à jour prev_loss avec la valeur actuelle de la perte
-    
-        # Optionnel: Afficher la perte pour le suivi
-        print(f"Iteration {i}, Loss: {loss.item()}")
-
-    # Après la boucle d'optimisation
-    with torch.no_grad():
-        softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
-        softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
-    return posterior_Qv, posterior_rho
+#######################################
 
 # def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9, lambda_sum=1, lambda_l2=0):
 #     m = len(emp_risks_views[0])

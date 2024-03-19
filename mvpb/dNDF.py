@@ -13,22 +13,20 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.metrics import euclidean_distances
 from sklearn.utils import check_random_state
 
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-from torch.nn.parameter import Parameter
-from collections import OrderedDict
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
+from torch.autograd import Variable
 from torch.utils.data import DataLoader,Dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-from lamb import optimizeLamb_mv_torch
+from .bounds import optimizeLamb_mv_torch
+from .util import uniform_distribution
 
-
-def uniform_distribution(m):
-    return np.full((m,), 1.0/m)
 
 class Dataset(Dataset):
 
@@ -36,7 +34,6 @@ class Dataset(Dataset):
         'Initialization'
         self.Data = Data
         self.labels = labels
-        
 
   def __len__(self):
         'Denotes the total number of samples'
@@ -44,7 +41,6 @@ class Dataset(Dataset):
 
   def __getitem__(self, idx):
         'Generates one sample of data'
-
 
         # Load data and get label
         X = self.Data[idx]
@@ -130,14 +126,29 @@ class Tree(nn.Module):
         
         
 class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
-    
-    def __init__(self, depth,n_in_feature,used_feature_rate, epochs=100, learning_rate = 0.001):
-        self.depth             = depth
-        self.n_in_feature      = n_in_feature
+    """
+    Deep Neural Decision Forests (dNDF) classifier.
+
+    Parameters:
+    - depth (int): The depth of the decision trees in the forest.
+    - n_in_feature (int): The number of input features.
+    - used_feature_rate (float): The rate of randomly selected features used in each decision tree.
+    - epochs (int): The number of training epochs.
+    - learning_rate (float): The learning rate for the optimizer.
+
+    Methods:
+    - fit(X, y): Fit the dNDF model to the training data.
+    - predict(X): Predict the labels for the input data.
+
+    """
+
+    def __init__(self, depth, n_in_feature, used_feature_rate, epochs=100, learning_rate=0.001):
+        self.depth = depth
+        self.n_in_feature = n_in_feature
         self.used_feature_rate = used_feature_rate
-        self.epochs            = epochs
-        self.learning_rate     = learning_rate
-        
+        self.epochs = epochs
+        self.learning_rate = learning_rate
+
     def fit(self, X, y):
         # Check that X and y have correct shape
         X, y = check_X_y(X, y)
@@ -145,48 +156,40 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         self.n_class = len(unique_labels(y))
         self.X_ = torch.from_numpy(X).type(torch.FloatTensor)
         self.y_ = torch.from_numpy(y).type(torch.LongTensor)
-        
-        #classifier
-        self.model = Tree(self.depth,self.n_in_feature,self.used_feature_rate,self.n_class)
-        # enumerate epochs
+
+        # classifier
+        self.model = Tree(self.depth, self.n_in_feature, self.used_feature_rate, self.n_class).to(device)
+
         # set up DataLoader for training set
         dataset = Dataset(self.X_, self.y_)
         loader = DataLoader(dataset, shuffle=True, batch_size=16)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-5)
-        for epoch in range(self.epochs): 
-            #print('EPOCH {}:'.format(n_epochs + 1))
-        
-            # Make sure gradient tracking is on, and do a pass over the data
-            self.model.train(True)
+
+        for epoch in range(self.epochs):
+            self.model.train()
             for batch_idx, data in enumerate(loader):
-                # Every data instance is an input + label pair
-                
                 inputs, labels = data
-                                # Zero your gradients for every batch!
+                inputs, labels = inputs.to(device), labels.to(device)
+
                 optimizer.zero_grad()
-        
-                # Make predictions for this batch
                 outputs = self.model(inputs)
-        
-                # Compute the loss and its gradients
+
                 loss = loss = F.nll_loss(outputs, labels)
                 loss.backward()
-        
-                # Adjust learning weights
+
                 optimizer.step()
-            
         return self
-    
+
     def predict(self, X):
         check_is_fitted(self)
         X = check_array(X)
         X_tensor = torch.from_numpy(X).type(torch.FloatTensor)
-    
+
         self.model.eval()
         with torch.no_grad():
             outputs = self.model(X_tensor)
             predicted_labels = torch.argmax(outputs, dim=1)
-    
+
         return predicted_labels.cpu().numpy()
     
     
@@ -200,16 +203,14 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         self.nb_views = nb_views
         self.depth = depth
         self.used_feature_rate = used_feature_rate
-        self.posterior = posterior if posterior is not None else uniform_distribution(nb_estimators)
+        self.posterior_rho = posterior if posterior is not None else uniform_distribution(nb_estimators)
         self._abc_pi = uniform_distribution(nb_estimators)  # Initialize the weights with the uniform distribution
         self._OOB = []
         
     def fit(self, X, y):
-        
         # Check that X and y have correct shape
         for i in range(self.nb_views):
             X[i], y = check_X_y(X[i], y)
-            
         
         
         # Create estimators for each views
@@ -256,15 +257,17 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         closest = np.argmin(euclidean_distances(X, self.X_), axis=1)
         return self.y_[closest]
     
-    def  optimize_rho(self, bound, labeled_data=None, incl_oob=True, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0.1):
+    def  optimize_rho(self, bound, labeled_data=None, incl_oob=True):
         check_is_fitted(self)
         
         if bound == 'Lambda':
             risks_views, ns_views = self.risks(labeled_data, incl_oob)
             emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
-            ns_min_values = [np.min(ns) for ns in ns_views]
+            ns_min = torch.tensor(np.min(ns_views))
 
-            posterior_Qv, posterior_rho = optimizeLamb_mv_torch(emp_risks_views, ns_min_values)
+            posterior_Qv, posterior_rho = optimizeLamb_mv_torch(emp_risks_views, ns_min)
+            self.posterior_rho = posterior_rho
+            
         return posterior_Qv, posterior_rho       
             
 
