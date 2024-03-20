@@ -21,7 +21,6 @@ def kl(Q, P):
     """
     return F.kl_div(Q.log(), P, reduction='sum')
 
-
 def uniform_distribution(size):
     """
     Generate a uniform distribution of a given size.

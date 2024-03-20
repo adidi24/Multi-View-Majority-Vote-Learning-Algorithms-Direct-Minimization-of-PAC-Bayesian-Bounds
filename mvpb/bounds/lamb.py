@@ -56,6 +56,7 @@ def mv_lamb(emp_mv_risk, n, KL_qp, KL_rhopi, delta=0.05):
     """
     n = float(n)
 
+    print(emp_mv_risk,  KL_rhopi)
     lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_qp+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
     bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
 
@@ -89,7 +90,7 @@ def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_p
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
 
     # Compute the Kullback-Leibler divergences
-    KL_QP = torch.sum(torch.stack([kl(q, p) * softmax_posterior_rho for q, p in zip(softmax_posterior_Qv, prior_Pv)]))
+    KL_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
     KL_rhopi = kl(softmax_posterior_rho, prior_pi)
     lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
 
@@ -115,7 +116,6 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=100, delta=0.05, eps=10**
     
     m = len(emp_risks_views[0])
     v = len(emp_risks_views)
-    # print(emp_risks_views)
     
     # Initialisation with the uniform distribution
     prior_Pv = [uniform_distribution(m)]*v
@@ -123,21 +123,6 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=100, delta=0.05, eps=10**
 
     prior_pi = uniform_distribution(v)
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
-    
-    lamb = 1.0
-    # print(f"{rho=}")
-    emp_risks = [torch.sum(torch.tensor(view) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-    emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
-    # print(f"{emp_mv_risk=}")
-    
-    KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-    KL_rhopi = kl(posterior_rho,prior_pi)
-
-    upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-    bound = upd+2*eps
-    print(f"{bound=}")
-    print(f"{upd=}")
-    print(f"Difference: {bound - upd}")
     
     all_parameters = list(posterior_Qv) + [posterior_rho]
     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
@@ -168,7 +153,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=100, delta=0.05, eps=10**
     with torch.no_grad():
         softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
         softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
-    return posterior_Qv, posterior_rho
+    return softmax_posterior_Qv, softmax_posterior_rho
 
 
 # Optimize PAC-Bayes-Lambda-bound:

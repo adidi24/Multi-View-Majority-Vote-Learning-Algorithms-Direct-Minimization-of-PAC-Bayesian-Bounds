@@ -23,8 +23,8 @@ from torch.utils.data import DataLoader,Dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-from .bounds import optimizeLamb_mv_torch
-from .util import uniform_distribution, mv_preds, risk
+from .bounds import optimizeLamb_mv_torch, PBkl, mv_PBkl, mv_lamb, lamb
+from .util import uniform_distribution, mv_preds, risk, kl
 
 
 class Dataset(Dataset):
@@ -254,7 +254,6 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 
             print(f'View {i+1}/{self.nb_views} done!')
             self._OOB.append((preds, self.y_))
-        print(f'returning')
         return self
     
     def predict_views(self, Xs):
@@ -296,7 +295,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         return (mvP, risk(mvP, Y)) if Y is not None else mvP
     
     def  optimize_rho(self, bound, labeled_data=None, incl_oob=True):
-        allowed_bounds = {"PBKL", "Lambda", "TND", "DIS"}
+        allowed_bounds = {"Lambda", "TND", "DIS"}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
         if labeled_data is None and not incl_oob:
@@ -314,15 +313,48 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
-        elif bound == 'PBKL':
-            raise Exception('Warning, optimize_rho: PBKL not implemented yet!')
-        
         elif bound == 'TND':
             raise Exception('Warning, optimize_rho: TND not implemented yet!')
         
         elif bound == 'DIS':
             raise Exception('Warning, optimize_rho: DIS not implemented yet!')
+
+    def bound(self, bound, labeled_data=None, incl_oob=True):
+        if bound not in ['PBkl', 'Lambda']:
+            raise Exception("Warning, ViewClassifier.bound: Unknown bound!")
+        if labeled_data is None and not incl_oob:
+            raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
+        
+        m = len(self._OOB[0][0]) if incl_oob else len(labeled_data[0][0])
+        v = self.nb_views
+        
+        # Compute the Kullback-Leibler divergences
+        with torch.no_grad():
+            prior_pi = uniform_distribution(v)
+            prior_Pv = [uniform_distribution(m)]*v
+            KL_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+            KL_QP = torch.sum(torch.stack(KL_QPs) * self.posterior_rho)
+            print(f"{self.posterior_rho=},  {prior_pi=}")
+            KL_rhopi = kl(self.posterior_rho, prior_pi)
+        
+        print(f"{KL_rhopi=},  {KL_QP=}")
+        if bound == 'PBkl':
+            emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
             
+            # Compute the PB-kl bound for each view and for the multiview resp.
+            pbkl_views = [PBkl(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
+            return (mv_PBkl(emp_mv_risk, ns, KL_QP, KL_rhopi),
+                    pbkl_views)
+        elif bound == 'Lambda':
+            emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
+            
+            # Compute the PB-lambda bound for each view and for the multiview resp.
+            lamb_views = [lamb(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
+            return (mv_lamb(emp_mv_risk, ns, KL_QP, KL_rhopi),
+                    lamb_views)
+        else : 
+            return None
+        
     def set_posteriors(self, posterior_rho, posterior_Qv):
         self.posterior_rho = posterior_rho
         self.posterior_Qv = posterior_Qv
@@ -353,6 +385,16 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 risks += self.risks_(P, Y)
 
         return risks_views, n_views
+    
+    def mv_risks(self, labeled_data=None, incl_oob=True):
+        risks_views, ns_views = self.risks(labeled_data, incl_oob)
+        emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
+        emp_rv = []
+        for q, rv in zip(self.posterior_Qv, emp_risks_views):
+            emp_rv.append(np.average(rv, weights=q.detach().numpy(), axis=0))
+        print(f"{len(emp_rv)=}")
+        emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho.detach().numpy(), axis=0)
+        return np.array(emp_rv), emp_mv_risk, np.min(ns_views)
     
     def oob_risks(self, preds, targs):
         m     = len(preds)
