@@ -23,7 +23,10 @@ from torch.utils.data import DataLoader,Dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-from .bounds import optimizeLamb_mv_torch, PBkl, mv_PBkl, mv_lamb, lamb
+from .bounds import (optimizeLamb_mv_torch, 
+                     PBkl, mv_PBkl, mv_lamb, lamb, 
+                     optimizeTND_DIS_mv_torch,
+                     tnd, mv_tnd)
 from .util import uniform_distribution, mv_preds, risk, kl
 import mvpb.util as util
 
@@ -315,13 +318,22 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND':
-            raise Exception('Warning, optimize_rho: TND not implemented yet!')
+            trisks_views, ns_views = self.tandem_risks(labeled_data, incl_oob)
+            dis_views, ns_views = self.disagreements(labeled_data, incl_oob)
+            emp_trisks_views = np.divide(trisks_views, ns_views, where=ns_views!=0)
+            emp_dis_views = np.divide(dis_views, ns_views, where=ns_views!=0)
+            ns_min = torch.tensor(np.min(ns_views))
+
+            posterior_Qv, posterior_rho = optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, ns_min)
+            
+            self.set_posteriors(posterior_rho, posterior_Qv)
+            return posterior_Qv, posterior_rho
         
         elif bound == 'DIS':
             raise Exception('Warning, optimize_rho: DIS not implemented yet!')
 
     def bound(self, bound, labeled_data=None, incl_oob=True):
-        if bound not in ['PBkl', 'Lambda']:
+        if bound not in ['PBkl', 'Lambda', 'TND']:
             raise Exception("Warning, ViewClassifier.bound: Unknown bound!")
         if labeled_data is None and not incl_oob:
             raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
@@ -350,11 +362,17 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
-            lamb_views = [lamb(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
+            lamb_per_view = [lamb(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
             return (mv_lamb(emp_mv_risk, ns, KL_QP, KL_rhopi),
-                    lamb_views)
-        else : 
-            return None
+                    lamb_per_view)
+        elif bound == 'TND':
+            emp_trisks_views, emp_mv_trisk, ns = self.mv_tandem_risk(labeled_data, incl_oob)
+            emp_dis_views, emp_mv_dis, ns = self.mv_disagreement(labeled_data, incl_oob)
+            
+            # Compute the PB-lambda bound for each view and for the multiview resp.
+            tnd_per_view = [tnd(trisk, emp_dis_views[i], ns, KL_QPs[i].item()) for i, trisk in enumerate(emp_trisks_views)]
+            return (mv_tnd(emp_mv_trisk, emp_mv_dis, ns, KL_QP, KL_rhopi),
+                    tnd_per_view)
         
     def set_posteriors(self, posterior_rho, posterior_Qv):
         self.posterior_rho = posterior_rho
@@ -393,23 +411,29 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         emp_rv = []
         for q, rv in zip(self.posterior_Qv, emp_risks_views):
             emp_rv.append(np.average(rv, weights=q.detach().numpy(), axis=0))
-        print(f"{len(emp_rv)=}")
+
         emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho.detach().numpy(), axis=0)
         return np.array(emp_rv), emp_mv_risk, np.min(ns_views)
 
     
     def mv_tandem_risk(self, labeled_data=None, incl_oob=True):
         trsk, n2 = self.tandem_risks(labeled_data, incl_oob)
+        trsk = np.divide(trsk, n2, where=n2!=0)
+        
         emp_tnd_rv = []
         for q, rv in zip(self.posterior_Qv, trsk):
             qv = q.detach().numpy()
-            emp_tnd_rv.append(np.average(np.average(rv/n2, weights=qv, axis=0), 
+            emp_tnd_rv.append(np.average(np.average(rv, weights=qv, axis=0), 
                                          weights=qv))
             
-        print(f"{emp_tnd_rv=}")
-        emp_mv_tnd_risk = np.average(emp_tnd_rv, weights=self.posterior_rho.detach().numpy(), axis=1) 
-        # print(f"{emp_mv_tnd_risk=}")
-        return np.array(emp_tnd_rv), emp_mv_tnd_risk, np.min(n2)
+
+        emp_tnd_rv = np.array(emp_tnd_rv)
+        mv_trisks = np.outer(emp_tnd_rv, emp_tnd_rv)
+        emp_mv_tnd_risk = np.average(
+            np.average(mv_trisks, weights=self.posterior_rho.detach().numpy(), axis=0),
+            weights=self.posterior_rho.detach().numpy())
+
+        return emp_tnd_rv, emp_mv_tnd_risk, np.min(n2)
 
     def tandem_risks(self, data=None, incl_oob=True):
         check_is_fitted(self)
@@ -437,4 +461,51 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 n2 += X.shape[0]
                 tandem_risks += util.tandem_risks(P, Y)
 
-        return tandem_risks, n2
+        return tandem_risks_views, n_views
+    
+    # Returns the disagreement
+    def mv_disagreement(self, labeled_data=None, incl_oob=True):
+        dis, n2 = self.disagreements(labeled_data, incl_oob)
+        dis = np.divide(dis, n2, where=n2!=0)
+        
+        emp_dis_rv = []
+        for q, rv in zip(self.posterior_Qv, dis):
+            qv = q.detach().numpy()
+            emp_dis_rv.append(np.average(np.average(rv, weights=qv, axis=0), 
+                                         weights=qv))
+            
+
+        emp_dis_rv = np.array(emp_dis_rv)
+        mv_dis = np.outer(emp_dis_rv, emp_dis_rv)
+        emp_mv_dis_risk = np.average(
+            np.average(mv_dis, weights=self.posterior_rho.detach().numpy(), axis=0),
+            weights=self.posterior_rho.detach().numpy())
+
+        return emp_dis_rv, emp_mv_dis_risk, np.min(n2)
+
+    def disagreements(self, data=None, incl_oob=True):
+        check_is_fitted(self)
+        disagreements_views = []
+        n_views     = []
+        for i in range(self.nb_views):
+            m = self.nb_estimators
+            n2 = np.zeros((m, m))
+            disagreements = np.zeros((m, m))
+
+            if incl_oob:
+                (preds, Y) = self._OOB[i]
+                # preds = [(idx, preds)] * n_estimators
+                odis, on2 = util.oob_disagreements(preds)
+                n2 += on2
+                disagreements += odis
+                n_views.append(n2)
+                disagreements_views.append(disagreements)
+
+            if data is not None:
+                X = data
+                P = self.predict_all(X)
+
+                n2 += X.shape[0]
+                disagreements += util.disagreements(P)
+
+        return disagreements_views, n_views

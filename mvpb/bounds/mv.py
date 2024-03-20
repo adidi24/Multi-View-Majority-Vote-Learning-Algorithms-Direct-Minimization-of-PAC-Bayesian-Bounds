@@ -11,8 +11,55 @@ import torch.optim as optim
 
 from mvpb.util import kl, uniform_distribution
 
+#FIXME: Verify the correctness of the implementation
+def tnd(emp_tnd, emp_dis, n, KL_QP, delta=0.05):
+    """
+    Compute the TND bound for each view.
 
-def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb):
+    Args:
+    - emp_tnd (float): The empirical tandem risk.
+    - emp_dis (float): The empirical disagreement risk.
+    - KL_QP (float): The Kullback-Leibler divergence between the prior and posterior distributions.
+    - delta (float, optional): The confidence level. Default is 0.05.
+
+    Returns:
+    - float: The TND bound.
+    """
+    lamb1 = 2.0 / (sqrt((2.0 * n * emp_tnd) / (KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb2 = 2.0 / (sqrt((2.0 * n * emp_dis) / (KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    
+    loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*KL_QP + log((2.0 * sqrt(n)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
+    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*KL_QP + log((2.0 * sqrt(n)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
+
+    bound = 2*loss_term1 + loss_term2
+    
+    return min(1.0, bound)
+
+def mv_tnd(emp_tnd, emp_dis, n, KL_QP, KL_rhopi, delta=0.05):
+    """
+    Compute the TND bound in theorem 4.
+
+    Args:
+    - emp_tnd (float): The empirical tandem risk.
+    - emp_dis (float): The empirical disagreement risk.
+    - KL_QP (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
+    - KL_rhopi (float): The Kullback-Leibler divergence between the hyper-prior and hyper-posterior distributions.
+    - delta (float, optional): The confidence level. Default is 0.05.
+
+    Returns:
+    - float: The TND bound.
+    """
+    lamb1 = 2.0 / (sqrt((2.0 * n * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb2 = 2.0 / (sqrt((2.0 * n * emp_dis) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    
+    loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
+    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
+
+    bound = 2*loss_term1 + loss_term2
+    
+    return min(1.0, bound)
+
+def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta):
     """
      Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 4.
 
@@ -31,18 +78,17 @@ def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prio
     - tensor: The computed loss value.
 
      """
-    
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical tandem risk
-    emp_tnd_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
-    emp_mv_tnd = torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho)
+    emp_tnd_risks = [torch.sum(torch.sum(torch.tensor(view) * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
+    emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
     
     # Compute the empirical disagreement
-    emp_dis_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
-    emp_mv_dis = torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho)
+    emp_dis_risks = [torch.sum(torch.sum(torch.tensor(view) * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
+    emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
 
 
     # Compute the Kullback-Leibler divergences
