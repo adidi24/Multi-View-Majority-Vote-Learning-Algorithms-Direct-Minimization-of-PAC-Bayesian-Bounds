@@ -84,11 +84,11 @@ def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_p
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
-    # Calculate the empirical risk
+    # Compute the empirical risk
     emp_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
 
-    # Calculate the Kullback-Leibler divergences
+    # Compute the Kullback-Leibler divergences
     KL_QP = torch.sum(torch.stack([kl(q, p) * softmax_posterior_rho for q, p in zip(softmax_posterior_Qv, prior_Pv)]))
     KL_rhopi = kl(softmax_posterior_rho, prior_pi)
     lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
@@ -99,7 +99,7 @@ def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_p
     return loss
 
 
-def optimizeLamb_mv_torch(emp_risks_views, n, delta=0.05, eps=10**-9):
+def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=100, delta=0.05, eps=10**-9):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -145,7 +145,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, delta=0.05, eps=10**-9):
     prev_loss = float('inf')
 
     # Optimisation loop
-    for i in range(100):
+    for i in range(max_iter):
         optimizer.zero_grad()
     
         # Calculating the loss

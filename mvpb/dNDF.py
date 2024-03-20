@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Mon Mar 11 07:30:57 2024
@@ -25,7 +24,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 from .bounds import optimizeLamb_mv_torch
-from .util import uniform_distribution
+from .util import uniform_distribution, mv_preds, risk
 
 
 class Dataset(Dataset):
@@ -143,6 +142,7 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
     """
 
     def __init__(self, depth, n_in_feature, used_feature_rate, epochs=100, learning_rate=0.001):
+        super(DeepNeuralDecisionForests, self).__init__()
         self.depth = depth
         self.n_in_feature = n_in_feature
         self.used_feature_rate = used_feature_rate
@@ -196,16 +196,21 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
 
 class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
     
-    def __init__(self, nb_estimators, nb_views, depth, used_feature_rate, random_state=42, posterior=None):
+    def __init__(self, nb_estimators, nb_views, depth, used_feature_rate, random_state=42, posterior_rho=None, epochs=100, learning_rate=0.001):
+        super(MultiViewBoundsDeepNeuralDecisionForests, self).__init__()
         self.random_state = random_state
         self._prng = check_random_state(self.random_state)
         self.nb_estimators = nb_estimators
+        self._estimators_views = None
         self.nb_views = nb_views
+        self.classes_ = None
         self.depth = depth
         self.used_feature_rate = used_feature_rate
-        self.posterior_rho = posterior if posterior is not None else uniform_distribution(nb_estimators)
+        self.posterior_rho = posterior_rho if posterior_rho is not None else uniform_distribution(nb_estimators)
         self._abc_pi = uniform_distribution(nb_estimators)  # Initialize the weights with the uniform distribution
         self._OOB = []
+        self.epochs = epochs
+        self.learning_rate = learning_rate
         
     def fit(self, X, y):
         # Check that X and y have correct shape
@@ -215,7 +220,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         
         # Create estimators for each views
         self._estimators_views = [[
-            DeepNeuralDecisionForests(depth=self.depth, n_in_feature=X[i].shape[1], used_feature_rate=self.used_feature_rate)
+            DeepNeuralDecisionForests(depth=self.depth, n_in_feature=X[i].shape[1], used_feature_rate=self.used_feature_rate, epochs=self.epochs, learning_rate=self.learning_rate)
             for _ in range(self.nb_estimators)]for i in range(self.nb_views)]
         
         self.classes_ = unique_labels(y)
@@ -247,17 +252,56 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 P_est[oob_idx] = oob_P
                 preds.append((M_est, P_est))
                 
-    
+            print(f'View {i+1}/{self.nb_views} done!')
             self._OOB.append((preds, self.y_))
+        print(f'returning')
         return self
     
-    def predict(self, X):
+    def predict_views(self, Xs):
         check_is_fitted(self)
-        X = check_array(X)
-        closest = np.argmin(euclidean_distances(X, self.X_), axis=1)
-        return self.y_[closest]
+        for i in range(self.nb_views):
+            Xs[i] = check_array(Xs[i])
+        
+        posteriors_qs = [p.data.numpy() for p in self.posterior_Qv]
+        
+        ys = []
+        for v in range(self.nb_views):
+            P = [est.predict(Xs[v]).astype(int) for est in self._estimators_views[v]]
+            mvtP = mv_preds(posteriors_qs[v], np.array(P))
+            ys.append(mvtP)
+        return np.array(ys).astype(int)
+
+    def predict_MV(self, Xs, Y=None):
+        """
+        Return the predicted class labels using majority vote of the
+        predictions from each view.
+        """
+        check_is_fitted(self)
+        
+        rho = self.posterior_rho.data.numpy()
+        
+        for i in range(self.nb_views):
+            if Y is not None:
+                Xs[i], Y = check_X_y(Xs[i], Y)
+            else:
+                Xs[i] = check_array(Xs[i])
+        n_views = len(Xs)
+
+        if n_views != self.nb_views:
+            raise ValueError(
+                f"Multiview input data must have {self.nb_views} views")
+        ys = self.predict_views(Xs)
+        mvP = mv_preds(rho, ys)
+        # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
+        return (mvP, risk(mvP, Y)) if Y is not None else mvP
     
     def  optimize_rho(self, bound, labeled_data=None, incl_oob=True):
+        allowed_bounds = {"PBKL", "Lambda", "TND", "DIS"}
+        if bound not in allowed_bounds:
+            raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
+        if labeled_data is None and not incl_oob:
+            raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
+        
         check_is_fitted(self)
         
         if bound == 'Lambda':
@@ -266,12 +310,22 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             ns_min = torch.tensor(np.min(ns_views))
 
             posterior_Qv, posterior_rho = optimizeLamb_mv_torch(emp_risks_views, ns_min)
-            self.posterior_rho = posterior_rho
             
-        return posterior_Qv, posterior_rho       
-            
-
+            self.set_posteriors(posterior_rho, posterior_Qv)
+            return posterior_Qv, posterior_rho
         
+        elif bound == 'PBKL':
+            raise Exception('Warning, optimize_rho: PBKL not implemented yet!')
+        
+        elif bound == 'TND':
+            raise Exception('Warning, optimize_rho: TND not implemented yet!')
+        
+        elif bound == 'DIS':
+            raise Exception('Warning, optimize_rho: DIS not implemented yet!')
+            
+    def set_posteriors(self, posterior_rho, posterior_Qv):
+        self.posterior_rho = posterior_rho
+        self.posterior_Qv = posterior_Qv
 
     def risks(self, data=None, incl_oob=True):
         check_is_fitted(self)
