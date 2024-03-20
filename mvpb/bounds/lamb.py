@@ -62,9 +62,9 @@ def mv_lamb(emp_mv_risk, n, KL_qp, KL_rhopi, delta=0.05):
 
     return min(1.0,2.0*bound)
 
-def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb):
+def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta):
     """
-    Compute the loss function for the Multi-View Majority Vote Learning algorithm.
+    Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 2.
 
     Args:
         emp_risks_views (list): A list of empirical risks for each view.
@@ -134,7 +134,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=100, delta=0.05, eps=10**
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
+        loss = compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta)
     
         loss.backward() # Backpropagation
     

@@ -25,6 +25,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 from .bounds import optimizeLamb_mv_torch, PBkl, mv_PBkl, mv_lamb, lamb
 from .util import uniform_distribution, mv_preds, risk, kl
+import mvpb.util as util
 
 
 class Dataset(Dataset):
@@ -192,7 +193,7 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
 
         return predicted_labels.cpu().numpy()
     
-    
+
 
 class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
     
@@ -370,7 +371,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             if incl_oob:
                 (preds, targs) = self._OOB[i]
                 # preds = [(idx, preds)] * n_estimators
-                orisk, on = self.oob_risks(preds, targs)
+                orisk, on = util.oob_risks(preds, targs)
                 n += on
                 risks += orisk
                 n_views.append(n)
@@ -382,7 +383,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 P = self.predict_all(X)
     
                 n += X[i].shape[0]
-                risks += self.risks_(P, Y)
+                risks += util.risks_(P, Y)
 
         return risks_views, n_views
     
@@ -395,21 +396,45 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         print(f"{len(emp_rv)=}")
         emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho.detach().numpy(), axis=0)
         return np.array(emp_rv), emp_mv_risk, np.min(ns_views)
+
     
-    def oob_risks(self, preds, targs):
-        m     = len(preds)
-        risks = np.zeros((m,))
-        ns    = np.zeros((m,))
-        for j, (M, P) in enumerate(preds):
-            risks[j] = np.sum(P[M==1]!=targs[M==1])
-            ns[j] = np.sum(M)
-        return risks, ns   
-    
-    
-    def risks_(preds, targs):
-        assert(len(preds.shape)==2 and len(targs.shape)==1)
-        assert(preds.shape[1] == targs.shape[0])
-        res = []
-        for j in range(preds.shape[0]):
-            res.append(np.sum(preds[j]!=targs))
-        return np.array(res)
+    def mv_tandem_risk(self, labeled_data=None, incl_oob=True):
+        trsk, n2 = self.tandem_risks(labeled_data, incl_oob)
+        emp_tnd_rv = []
+        for q, rv in zip(self.posterior_Qv, trsk):
+            qv = q.detach().numpy()
+            emp_tnd_rv.append(np.average(np.average(rv/n2, weights=qv, axis=0), 
+                                         weights=qv))
+            
+        print(f"{emp_tnd_rv=}")
+        emp_mv_tnd_risk = np.average(emp_tnd_rv, weights=self.posterior_rho.detach().numpy(), axis=1) 
+        # print(f"{emp_mv_tnd_risk=}")
+        return np.array(emp_tnd_rv), emp_mv_tnd_risk, np.min(n2)
+
+    def tandem_risks(self, data=None, incl_oob=True):
+        check_is_fitted(self)
+        tandem_risks_views = []
+        n_views     = []
+        for i in range(self.nb_views):
+            m = self.nb_estimators
+            n2 = np.zeros((m, m))
+            tandem_risks = np.zeros((m, m))
+
+            if incl_oob:
+                (preds, targs) = self._OOB[i]
+                # preds = [(idx, preds)] * n_estimators
+                otand, on2 = util.oob_tandem_risks(preds, targs)
+                n2 += on2
+                tandem_risks += otand
+                n_views.append(n2)
+                tandem_risks_views.append(tandem_risks)
+
+            if data is not None:
+                assert (len(data) == 2)
+                X, Y = data
+                P = self.predict_all(X)
+
+                n2 += X.shape[0]
+                tandem_risks += util.tandem_risks(P, Y)
+
+        return tandem_risks, n2
