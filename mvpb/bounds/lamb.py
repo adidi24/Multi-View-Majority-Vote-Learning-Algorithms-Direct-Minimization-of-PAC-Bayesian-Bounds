@@ -56,7 +56,6 @@ def mv_lamb(emp_mv_risk, n, KL_qp, KL_rhopi, delta=0.05):
     """
     n = float(n)
 
-    print(emp_mv_risk,  KL_rhopi)
     lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_qp+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
     bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
 
@@ -147,7 +146,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=100, delta=0.05, eps=10**
         prev_loss = loss.item()  # Update the previous loss with the current loss
     
         # Optionnel: Afficher la perte pour le suivi
-        print(f"Iteration: {i},\t Loss: {loss.item()}")
+        # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
     # After the optimization
     with torch.no_grad():

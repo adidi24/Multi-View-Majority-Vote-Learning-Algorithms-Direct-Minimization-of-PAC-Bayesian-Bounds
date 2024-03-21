@@ -256,23 +256,24 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 P_est[oob_idx] = oob_P
                 preds.append((M_est, P_est))
                 
-            print(f'View {i+1}/{self.nb_views} done!')
+            # print(f'View {i+1}/{self.nb_views} done!')
             self._OOB.append((preds, self.y_))
         return self
     
-    def predict_views(self, Xs):
+    def predict_views(self, Xs, Y=None):
         check_is_fitted(self)
-        for i in range(self.nb_views):
-            Xs[i] = check_array(Xs[i])
         
         posteriors_qs = [p.data.numpy() for p in self.posterior_Qv]
         
         ys = []
+        v_risks = []
         for v in range(self.nb_views):
             P = [est.predict(Xs[v]).astype(int) for est in self._estimators_views[v]]
-            mvtP = mv_preds(posteriors_qs[v], np.array(P))
+            mvtP = util.mv_preds(posteriors_qs[v], np.array(P))
             ys.append(mvtP)
-        return np.array(ys).astype(int)
+            if Y is not None:
+                v_risks.append(util.risk(mvtP, Y))
+        return np.array(ys).astype(int), np.array(v_risks)
 
     def predict_MV(self, Xs, Y=None):
         """
@@ -293,10 +294,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         if n_views != self.nb_views:
             raise ValueError(
                 f"Multiview input data must have {self.nb_views} views")
-        ys = self.predict_views(Xs)
-        mvP = mv_preds(rho, ys)
+        ys, v_risks = self.predict_views(Xs, Y)
+        mvP = util.mv_preds(rho, ys)
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
-        return (mvP, risk(mvP, Y)) if Y is not None else mvP
+        return (mvP, util.risk(mvP, Y), v_risks) if Y is not None else mvP
     
     def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True):
         allowed_bounds = {"Lambda", "TND", "DIS"}
@@ -317,7 +318,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
-        elif bound == 'TND':
+        elif bound == 'DIS':
             trisks_views, ns_views = self.tandem_risks(labeled_data, incl_oob)
             dis_views, ns_views = self.disagreements(unlabeled_data, incl_oob)
             emp_trisks_views = np.divide(trisks_views, ns_views, where=ns_views!=0)
@@ -329,11 +330,11 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
-        elif bound == 'DIS':
-            raise Exception('Warning, optimize_rho: DIS not implemented yet!')
+        elif bound == 'TND':
+            raise Exception('Warning, optimize_rho: TND not implemented yet!')
 
     def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True):
-        if bound not in ['PBkl', 'Lambda', 'TND']:
+        if bound not in ['PBkl', 'Lambda', 'DIS']:
             raise Exception("Warning, ViewClassifier.bound: Unknown bound!")
         if labeled_data is None and not incl_oob:
             raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
@@ -347,10 +348,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             prior_Pv = [uniform_distribution(m)]*v
             KL_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
             KL_QP = torch.sum(torch.stack(KL_QPs) * self.posterior_rho)
-            print(f"{self.posterior_rho=},  {prior_pi=}")
+            # print(f"{self.posterior_rho=},  {prior_pi=}")
             KL_rhopi = kl(self.posterior_rho, prior_pi)
         
-        print(f"{KL_rhopi=},  {KL_QP=}")
+        # print(f"{KL_rhopi=},  {KL_QP=}")
         if bound == 'PBkl':
             emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
             
@@ -363,15 +364,15 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
             lamb_per_view = [lamb(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
-            return (mv_lamb(emp_mv_risk, ns, KL_QP, KL_rhopi),
+            return (mv_lamb(emp_mv_risk, ns, KL_QP.item(), KL_rhopi.item()),
                     lamb_per_view)
-        elif bound == 'TND':
+        elif bound == 'DIS':
             emp_trisks_views, emp_mv_trisk, ns = self.mv_tandem_risk(labeled_data, incl_oob)
             emp_dis_views, emp_mv_dis, ns = self.mv_disagreement(unlabeled_data, incl_oob)
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
             tnd_per_view = [tnd(trisk, emp_dis_views[i], ns, KL_QPs[i].item()) for i, trisk in enumerate(emp_trisks_views)]
-            return (mv_tnd(emp_mv_trisk, emp_mv_dis, ns, KL_QP, KL_rhopi),
+            return (mv_tnd(emp_mv_trisk, emp_mv_dis, ns, KL_QP.item(), KL_rhopi.item()),
                     tnd_per_view)
         
     def set_posteriors(self, posterior_rho, posterior_Qv):
@@ -396,7 +397,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             if data is not None:
                 assert (len(data) == 2)
                 X, Y = data
-                np.array([est.predict(X[i]).astype(int) for est in self._estimators_views[i]])
+                P = np.array([est.predict(X[i]).astype(int) for est in self._estimators_views[i]])
     
                 n += X[i].shape[0]
                 risks += util.risks_(P, Y)
@@ -454,9 +455,9 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             if data is not None:
                 assert (len(data) == 2)
                 X, Y = data
-                np.array([est.predict(X[i]).astype(int) for est in self._estimators_views[i]])
+                P = np.array([est.predict(X[i]).astype(int) for est in self._estimators_views[i]])
 
-                n2 += X.shape[0]
+                n2 += X[i].shape[0]
                 tandem_risks += util.tandem_risks(P, Y)
             n_views.append(n2)
             tandem_risks_views.append(tandem_risks)
@@ -503,7 +504,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 X = data[i]
                 P = np.array([est.predict(X).astype(int) for est in self._estimators_views[i]])
 
-                n2 += X.shape[0]
+                n2 += X[i].shape[0]
                 disagreements += util.disagreements(P)
             n_views.append(n2)
             disagreements_views.append(disagreements)

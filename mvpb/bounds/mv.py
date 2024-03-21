@@ -153,7 +153,7 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, n, max_iter=100, delt
         prev_loss = loss.item()  # Update the previous loss with the current loss
     
         # Optionnel: Afficher la perte pour le suivi
-        print(f"Iteration: {i},\t Loss: {loss.item()}")
+        # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
     # After the optimization
     with torch.no_grad():

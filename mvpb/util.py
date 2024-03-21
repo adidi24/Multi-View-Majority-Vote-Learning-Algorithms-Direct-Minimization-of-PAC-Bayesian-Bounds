@@ -73,6 +73,29 @@ def mv_preds(posterior, preds):
         results[i] = np.argmax(np.bincount(pl, weights=posterior))
     return results+tr
 
+def MV_preds(rho, qs, preds):
+    rho_qs = qs * rho[:, np.newaxis]
+    rho_qs = rho_qs.flatten()
+    m = rho_qs.shape[0]
+    
+    preds = np.concatenate(preds, axis=0)
+    preds = np.transpose(preds)
+    
+    assert(preds.shape[1] == m)
+    if rho_qs.sum() != 1:
+        print(f"\t\t\t {rho_qs.sum()=}")
+    # assert(rho_qs.sum() == 1)
+    n = preds.shape[0]
+
+    
+    tr = np.min(preds)
+    preds -= tr
+
+    results = np.zeros(n)
+    for i,pl in enumerate(preds):
+        results[i] = np.argmax(np.bincount(pl, weights=rho_qs))
+    return results+tr
+
 def oob_risks(preds, targs):
     """
     Calculate the out-of-bag risks and the number of samples for each prediction.
