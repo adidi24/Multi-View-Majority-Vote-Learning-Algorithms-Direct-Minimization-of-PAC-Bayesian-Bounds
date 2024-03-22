@@ -339,7 +339,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         if labeled_data is None and not incl_oob:
             raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
         
-        m = len(self._OOB[0][0]) if incl_oob else len(labeled_data[0][0])
+        m = self.nb_estimators
         v = self.nb_views
         
         # Compute the Kullback-Leibler divergences
@@ -465,8 +465,8 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         return tandem_risks_views, n_views
     
     # Returns the disagreement
-    def mv_disagreement(self, labeled_data=None, incl_oob=True):
-        dis, n2 = self.disagreements(labeled_data, incl_oob)
+    def mv_disagreement(self, unlabeled_data=None, incl_oob=True):
+        dis, n2 = self.disagreements(unlabeled_data, incl_oob)
         dis = np.divide(dis, n2, where=n2!=0)
         
         emp_dis_rv = []
@@ -484,7 +484,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
 
         return emp_dis_rv, emp_mv_dis_risk, np.min(n2)
 
-    def disagreements(self, data=None, incl_oob=True):
+    def disagreements(self, unlabeled_data=None, incl_oob=True):
         check_is_fitted(self)
         disagreements_views = []
         n_views     = []
@@ -500,8 +500,8 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 n2 += on2
                 disagreements += odis
 
-            if data is not None:
-                X = data[i]
+            if unlabeled_data is not None:
+                X = unlabeled_data[i]
                 P = np.array([est.predict(X).astype(int) for est in self._estimators_views[i]])
 
                 n2 += X[i].shape[0]

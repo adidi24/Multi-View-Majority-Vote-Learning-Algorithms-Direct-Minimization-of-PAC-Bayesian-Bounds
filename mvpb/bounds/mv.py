@@ -11,7 +11,7 @@ import torch.optim as optim
 
 from mvpb.util import kl, uniform_distribution
 
-#FIXME: Verify the correctness of the implementation
+
 def tnd(emp_tnd, emp_dis, n, KL_QP, delta=0.05):
     """
     Compute the TND bound for each view.
@@ -25,8 +25,8 @@ def tnd(emp_tnd, emp_dis, n, KL_QP, delta=0.05):
     Returns:
     - float: The TND bound.
     """
-    lamb1 = 2.0 / (sqrt((2.0 * n * emp_tnd) / (KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
-    lamb2 = 2.0 / (sqrt((2.0 * n * emp_dis) / (KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb1 = 2.0 / (sqrt((2.0 * n * emp_tnd) / (2*KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb2 = 2.0 / (sqrt((2.0 * n * emp_dis) / (2*KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
     
     loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*KL_QP + log((2.0 * sqrt(n)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
     loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*KL_QP + log((2.0 * sqrt(n)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
@@ -49,8 +49,8 @@ def mv_tnd(emp_tnd, emp_dis, n, KL_QP, KL_rhopi, delta=0.05):
     Returns:
     - float: The TND bound.
     """
-    lamb1 = 2.0 / (sqrt((2.0 * n * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
-    lamb2 = 2.0 / (sqrt((2.0 * n * emp_dis) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb1 = 2.0 / (sqrt((1.0 * n * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb2 = 2.0 / (sqrt((1.0 * n * emp_dis) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
     
     loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
     loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
@@ -94,13 +94,13 @@ def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prio
     # Compute the Kullback-Leibler divergences
     KL_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
     KL_rhopi = kl(softmax_posterior_rho, prior_pi)
-    lamb1 = 2.0 / (torch.sqrt((2.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
-    lamb2 = 2.0 / (torch.sqrt((2.0 * n * emp_mv_dis) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb1 = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb2 = 2.0 / (torch.sqrt((1.0 * n * emp_mv_dis) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
     
     loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
     loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
 
-    loss = 2*loss_term1 + loss_term2
+    loss = loss_term1 + loss_term2/2.0
     
     return loss
 
