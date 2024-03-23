@@ -17,14 +17,14 @@ from mvpb.util import kl, uniform_distribution
 
 
 # PAC-Bayes-Lambda-bound:
-def lamb(emp_risk, n, KL_qp, delta=0.05):
+def lamb(emp_risk, n, KL_QP, delta=0.05):
     """
     Calculate the value of lambda and the corresponding bound.
 
     Parameters:
     - emp_risk (float): The empirical risk.
     - n (int): The number of samples.
-    - KL_qp (float): The Kullback-Leibler divergence between the prior and posterior distributions.
+    - KL_QP (float): The Kullback-Leibler divergence between the prior and posterior distributions.
     - delta (float, optional): The confidence level. Default is 0.05.
 
     Returns:
@@ -33,20 +33,20 @@ def lamb(emp_risk, n, KL_qp, delta=0.05):
     """
     n = float(n)
 
-    lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_qp+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-    bound = emp_risk / (1.0 - lamb/2.0) + (KL_qp + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+    lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_QP+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
+    bound = emp_risk / (1.0 - lamb/2.0) + (KL_QP + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
 
     return min(1.0,2.0*bound)
 
 # MV-PAC-Bayes-Lambda-bound:
-def mv_lamb(emp_mv_risk, n, KL_qp, KL_rhopi, delta=0.05):
+def mv_lamb(emp_mv_risk, n, KL_QP, KL_rhopi, delta=0.05):
     """
     Calculate the value of lambda and the corresponding multiview bound.
 
     Parameters:
     - emp_risk (float): The weighted sum of the empirical risk of each view.
     - n (int): The number of samples.
-    - KL_qp (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
+    - KL_QP (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
     - KL_rhopi (float): The Kullback-Leibler divergence between the hyper-prior and hyper-posterior distributions.
     - delta (float, optional): The confidence level. Default is 0.05.
 
@@ -56,8 +56,8 @@ def mv_lamb(emp_mv_risk, n, KL_qp, KL_rhopi, delta=0.05):
     """
     n = float(n)
 
-    lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_qp+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-    bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+    lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_QP+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
+    bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
 
     return min(1.0,2.0*bound)
 
@@ -161,26 +161,26 @@ def optimizeLamb(emp_risks, n, delta=0.05, eps=10**-9, abc_pi=None):
     n = float(n)
     prior  = uniform_distribution(m) if abc_pi is None else np.copy(abc_pi)
     posterior = uniform_distribution(m) if abc_pi is None else np.copy(abc_pi)
-    KL_qp = kl(posterior,prior)
+    KL_QP = kl(posterior,prior)
 
     lamb = 1.0
     emp_risk = np.average(emp_risks, weights=posterior)
 
-    upd = emp_risk / (1.0 - lamb/2.0) + (KL_qp + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+    upd = emp_risk / (1.0 - lamb/2.0) + (KL_QP + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
     bound = upd+2*eps
 
     while bound-upd > eps:
         bound = upd
-        lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_qp+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
+        lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_QP+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
         for h in range(m):
             posterior[h] = prior[h]*exp(-lamb*n*emp_risks[h])
         posterior /= np.sum(posterior)
 
         emp_risk = np.average(emp_risks, weights=posterior)
-        KL_qp = kl(posterior,prior)
+        KL_QP = kl(posterior,prior)
 
-        upd = emp_risk / (1.0 - lamb/2.0) + (KL_qp + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n) 
-    return bound, posterior, lamb, KL_qp, emp_risk
+        upd = emp_risk / (1.0 - lamb/2.0) + (KL_QP + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n) 
+    return bound, posterior, lamb, KL_QP, emp_risk
 
 
 # Optimize PAC-Bayes-Multi-View-Lambda-bound:
@@ -192,28 +192,28 @@ def optimizeLamb_mv(emp_risks, KL_qps, n, delta=0.05, eps=10**-9):
     pi  = uniform_distribution(v)
     rho = uniform_distribution(v)
     KL_rhopi = kl(rho,pi) #KL of hyper distributions
-    KL_qp = np.average(KL_qps, weights=rho)
+    KL_QP = np.average(KL_qps, weights=rho)
     
     lamb = 1.0
     # print(f"{rho=}")
     emp_mv_risk = np.average(emp_risks, weights=rho, axis=0)
     # print(f"{emp_mv_risk=}")
-    upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+    upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
     bound = upd+2*eps
 
     while bound-upd > eps:
         # print(f"{upd=}\n {rho=}\n {emp_mv_risk}")
         bound = upd
-        lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_qp+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
+        lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_QP+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
         for h in range(v):
             rho[h] = pi[h]*exp(-lamb*n*emp_risks[h])
         rho /= np.sum(rho)
 
         emp_mv_risk = np.average(emp_risks, weights=rho, axis=0)
         KL_rhopi = kl(rho,pi)
-        KL_qp = np.average(KL_qps, weights=rho)
+        KL_QP = np.average(KL_qps, weights=rho)
         
-        upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_qp + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+        upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
     return bound, rho, lamb, KL_rhopi, emp_mv_risk
 
 # def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0):
