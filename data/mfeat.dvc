@@ -1,0 +1,5 @@
+outs:
+- md5: 6f00fdd92cbfc61ccf43118448526af2.dir
+  size: 17456216
+  nfiles: 13
+  path: mfeat

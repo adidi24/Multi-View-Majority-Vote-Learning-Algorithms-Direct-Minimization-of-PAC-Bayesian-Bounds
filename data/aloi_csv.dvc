@@ -1,0 +1,5 @@
+outs:
+- md5: 7fc1b1541a45d6263a974e50cc6782f5.dir
+  size: 673348927
+  nfiles: 5
+  path: aloi_csv

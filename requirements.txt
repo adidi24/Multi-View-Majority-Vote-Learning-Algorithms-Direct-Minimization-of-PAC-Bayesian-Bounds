@@ -8,3 +8,5 @@ wandb
 mvlearn
 torch
 torchvision
+dvc
+dvc-s3

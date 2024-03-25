@@ -283,7 +283,27 @@ class Nutrimouse:
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
         
-            
+class ALOI:
+    def __init__(self, dataset_path = os.getcwd()+'/data/aloi_csv/'):
+        self._name = "ALOI"
+        self.dataset_path = dataset_path
+        self.filenames = os.listdir(dataset_path)
+        self.filenames.sort()
+
+    def load_data(self):
+        dataset = []
+        for file in self.filenames:
+            df = pd.read_csv(self.dataset_path+file, header=None)
+            numerical_df = df.select_dtypes(include=[np.number])
+            dataset.append(numerical_df.to_numpy())
+        return dataset
+
+    def get_data(self):
+        dataset = self.load_data()
+        Xs = dataset[:-1]
+        y = dataset[-1]
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
 
         
     
