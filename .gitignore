@@ -2,7 +2,6 @@
 *__pycache__*
 *.DS_Store*
 rcv1rcv2aminigoutte
-Reuters-rcv1-rcv2
 data/mfeat/
 data/sample_data/
 mvb/
@@ -10,3 +9,6 @@ data/ALOI
 data/NHANES/
 data/aloi_csv/
 data/nutrimouse/
+data/corel/
+data/corel_features/
+data/ReutersEN/

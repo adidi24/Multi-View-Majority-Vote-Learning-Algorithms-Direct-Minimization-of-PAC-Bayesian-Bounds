@@ -1,0 +1,6 @@
+outs:
+- md5: 484cbfb4a4ec5a57d968bc4980d84fe8.dir
+  size: 29875615
+  nfiles: 8
+  hash: md5
+  path: corel_features

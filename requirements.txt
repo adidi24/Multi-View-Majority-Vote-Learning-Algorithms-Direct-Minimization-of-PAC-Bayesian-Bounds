@@ -10,3 +10,5 @@ torch
 torchvision
 dvc
 dvc-s3
+ucimlrepo
+mahotas

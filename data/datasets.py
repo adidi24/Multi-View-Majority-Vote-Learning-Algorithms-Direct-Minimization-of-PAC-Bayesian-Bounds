@@ -9,15 +9,15 @@ import csv
 import os
 import glob
 import pickle
-from scipy.sparse import csr_matrix
 
-from sklearn.datasets import make_moons
+from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.utils import Bunch
 
 import pandas as pd
 import numpy as np
+import scipy.sparse as sp
 import re
-
-from sklearn.utils import Bunch
 
 def train_test_merge(Xs_train, y_train, Xs_test, y_test):
     Xs = []
@@ -305,67 +305,114 @@ class ALOI:
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
 
+class IS:
+    def __init__(self):
+        self._name = "Image Segmentation"
+        self.le = LabelEncoder()
+
+    def load_data(self):
+        from ucimlrepo import fetch_ucirepo 
+        image_segmentation = fetch_ucirepo(id=50) 
+        self.le.fit(image_segmentation.data.targets)
+        labels = self.le.transform(image_segmentation.data.targets)
+        return  image_segmentation.data, labels
+
+    def get_data(self):
+        dataset, y = self.load_data()
         
-    
-    
+        Xs = [dataset.features.iloc[:, :9].values, dataset.features.iloc[:, 9:].values]
         
-        
-        
-# def make_moons_da(n_samples=100, rotation=0, noise=0.05, random_state=0):
-#     Xs, ys = make_moons(n_samples=n_samples,
-#                         noise=noise,
-#                         random_state=random_state)
-#     Xs[:, 0] -= 0.5
-#     theta = np.radians(-rotation)
-#     cos_theta, sin_theta = np.cos(theta), np.sin(theta)
-#     rot_matrix = np.array(
-#         ((cos_theta, -sin_theta),
-#           (sin_theta, cos_theta))
-#     )
-#     Xt = Xs.dot(rot_matrix)
-#     yt = ys
-#     return Xs, ys, Xt, yt        
-
-# Xs, ys, Xt, yt = make_moons_da()
-
-# x_min, y_min = np.min([Xs.min(0), Xt.min(0)], 0)
-# x_max, y_max = np.max([Xs.max(0), Xt.max(0)], 0)
-# x_grid, y_grid = np.meshgrid(np.linspace(x_min-0.1, x_max+0.1, 100),
-#                              np.linspace(y_min-0.1, y_max+0.1, 100))
-# X_grid = np.stack([x_grid.ravel(), y_grid.ravel()], -1)
-
-# fig, ax1 = plt.subplots(1, 1, figsize=(6, 5))
-# ax1.set_title("Input space")
-# ax1.scatter(Xs[ys==0, 0], Xs[ys==0, 1], label="source", edgecolors='k', c="red")
-# ax1.scatter(Xs[ys==1, 0], Xs[ys==1, 1], label="source", edgecolors='k', c="blue")
-# ax1.scatter(Xt[:, 0], Xt[:, 1], label="target", edgecolors='k', c="black")
-
-# ax1.legend(loc="lower right")
-# ax1.set_yticklabels([])
-# ax1.set_xticklabels([])
-# ax1.tick_params(direction ='in')
-# plt.show()
-
-# datasets  = Nhanes() # load Nhanes dataset
-# X,y = datasets.get_data(return_list = True, domain_datasets=False)
-# =====
-# datasets  = SampleData()
-# X, y_train, Xs_test, y_test = datasets.get_data()
-# print("number of views",len(X))
-
-# #concatenation of te views###############################
-# # X_concat = np.concatenate((X[0],X[1],X[2],X[3]), axis=1)
-# ###############################
-
-# X_view1 = X[0]
-# X_view2 = X[1]
-# X_view3 = X[2]
-# X_view4 = X[3]
-
-# for xv in X:
-#     print(xv)
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
     
+    def get_real_classes(self, y):
+        return self.le.inverse_transform(y)
     
+class CorelImageFeatures:
+    def __init__(self, dataset_path = os.getcwd()+'/data/corel_features/'):
+        self._name = "Corel Image Features"
+        self.dataset_path = dataset_path
+        self.filenames = os.listdir(dataset_path)
+        self.le = LabelEncoder()
+
+    def load_data(self):
+        dataset = []
+        for file in self.filenames:
+            if file.endswith('.csv'):
+                data = np.loadtxt(self.dataset_path+file, delimiter=',')
+                dataset.append(data[:, 1:])
+            elif file.endswith('.txt'):
+                labels = np.loadtxt(self.dataset_path+file, delimiter=' ', dtype=str)[:, 1]
+                self.le.fit(labels)
+                labels = self.le.transform(labels)
+        return dataset, labels
+
+    def get_data(self):
+        Xs, y = self.load_data()
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
     
+    def get_real_classes(self, y):
+        return self.le.inverse_transform(y)
     
-    
+class ReutersEN:
+    def __init__(self, sample=1, select_chi2=1000, dataset_path = os.getcwd()+'/data//ReutersEN/reutersEN/'):
+        self._name = "ReutersEN"
+        self.dataset_path = dataset_path
+        self.sample = sample
+        self.views = ['EN', 'FR', 'GR', 'IT', 'SP']
+        self.select_chi2 = select_chi2
+
+    def load_data(self):
+        data = []
+        for view in self.views:
+            mtx_file = f"{self.dataset_path}reutersEN_{self.sample}_{view}.mtx"
+            maprow_file = f"{self.dataset_path}reutersEN_{self.sample}_{view}.maprow.txt"
+            mapcol_file = f"{self.dataset_path}reutersEN_{self.sample}_{view}.mapcol.txt"
+            
+            with open(mtx_file, 'r') as f:
+                # Skip header lines
+                for _ in range(2):
+                    next(f)
+
+                num_rows, num_cols, num_entries = map(int, next(f).split())
+
+                row_indices = []
+                col_indices = []
+                data_values = []
+
+                # Read each line in the file and extract row index, column index, and data value
+                for line in f:
+                    row, col, val = map(float, line.split())
+                    row_indices.append(int(row) - 1)
+                    col_indices.append(int(col) - 1)
+                    data_values.append(val)
+
+                # Construct the sparse matrix
+                sparse_mtx = sp.coo_matrix((data_values, (row_indices, col_indices)), shape=(num_rows, num_cols))
+                dense_array = sparse_mtx.toarray()
+                data.append(dense_array)
+        return data
+
+    def load_labels(self):
+        labels_file = f"{self.dataset_path}labels.txt"
+        with open(labels_file, 'r') as f:
+            labels = [line.strip() for line in f]
+        return labels
+
+    def load_affectations(self):
+        act_file = f"{self.dataset_path}reutersEN_act.txt"
+        with open(act_file, 'r') as f:
+            affectations = [line.strip() for line in f]
+        return np.array(affectations, dtype=int)
+
+    def get_data(self):
+        Xs = self.load_data()
+        y = self.load_affectations()
+        if self.select_chi2 is not None:
+            for i, X in enumerate(Xs): 
+                print(f"Extracting {self.select_chi2} best features by a chi-squared test")
+                ch2 = SelectKBest(chi2, k=self.select_chi2)
+                Xs[i] = ch2.fit_transform(X, y)
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
