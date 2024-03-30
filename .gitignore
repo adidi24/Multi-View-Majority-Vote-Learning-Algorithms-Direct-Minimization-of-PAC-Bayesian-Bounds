@@ -1,6 +1,8 @@
 *.pyc
 *__pycache__*
 *.DS_Store*
+data/.ipynb_checkpoints
+.ipynb_checkpoints
 rcv1rcv2aminigoutte
 data/mfeat/
 data/sample_data/
