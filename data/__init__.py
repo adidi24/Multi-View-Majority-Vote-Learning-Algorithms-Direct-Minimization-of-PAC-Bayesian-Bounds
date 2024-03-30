@@ -1,8 +1,10 @@
 from .datasets import (MultipleFeatures,
+                       MNIST_MV_Datasets,
                        SampleData,
                        Nutrimouse,
                        ALOI,
                        ReutersEN,
                        IS,
                        CorelImageFeatures,
-                       train_test_split, train_test_merge, s1_s2_split)
+                       train_test_split, train_test_merge, s1_s2_split,
+                       multiclass_to_binary, balance_dataset)

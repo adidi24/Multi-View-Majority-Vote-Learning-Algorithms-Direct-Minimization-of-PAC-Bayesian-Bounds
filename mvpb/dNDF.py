@@ -166,7 +166,8 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         self.y_ = torch.from_numpy(y).type(torch.LongTensor)
 
         # classifier
-        self.model = Tree(self.depth, self.n_in_feature, self.used_feature_rate, self.n_class).to(device)
+        self.model = Tree(self.depth, self.n_in_feature, self.used_feature_rate, self.n_class)
+        self.model = self.model.to(device)
 
         # set up DataLoader for training set
         dataset = Dataset(self.X_, self.y_)
@@ -418,6 +419,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
     def set_posteriors(self, posterior_rho, posterior_Qv):
         self.posterior_rho = posterior_rho
         self.posterior_Qv = posterior_Qv
+    
+    def clear_posteriors(self):
+        self.posterior_rho = None
+        self.posterior_Qv = None
 
     def risks(self, data=None, incl_oob=True):
         check_is_fitted(self)

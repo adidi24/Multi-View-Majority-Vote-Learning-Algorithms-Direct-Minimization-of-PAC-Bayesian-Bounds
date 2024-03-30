@@ -1,0 +1,6 @@
+outs:
+- md5: 4a0142a0e135e7270f42f67311a8a057.dir
+  size: 318683501
+  nfiles: 4
+  hash: md5
+  path: MNIST_1

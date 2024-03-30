@@ -95,7 +95,42 @@ def s1_s2_split(Xs_train, y_train, Xs_test, y_test, s1_size=0.4, random_state=42
     }
     
     return s1, s2
+
+def multiclass_to_binary(Xs_train, y_train, Xs_test, y_test, label_index):
+    if len(np.unique(y_train)) == 2 and len(np.unique(y_test)) == 2:
+        print("The dataset is already binary, returning it as is.")
+        return Xs_train, y_train, Xs_test, y_test
     
+    binary_y_train = np.where(y_train == label_index, 1, 0)
+    binary_y_test = np.where(y_test == label_index, 1, 0)
+    
+    # Balance the binary dataset
+    Xs_train_balanced, binary_y_train_balanced = balance_dataset(Xs_train, binary_y_train)
+    
+    return Xs_train_balanced, binary_y_train_balanced, Xs_test, binary_y_test
+
+def balance_dataset(Xs, y):
+    # Count the number of positive and negative samples
+    num_positive = np.sum(y == 1)
+    num_negative = np.sum(y == 0)
+    
+    minority_label = 1 if num_positive < num_negative else 0
+    majority_label = 0 if minority_label == 1 else 1
+    
+    # Find the indices of the minority and majority class samples
+    minority_indices = np.where(y == minority_label)[0]
+    majority_indices = np.where(y == majority_label)[0]
+    
+    # Randomly sample the majority class samples to match the number of minority class samples
+    majority_indices_balanced = np.random.choice(majority_indices, size=num_positive, replace=False)
+    
+    balanced_indices = np.concatenate((minority_indices, majority_indices_balanced))
+    np.random.shuffle(balanced_indices)
+    
+    Xs_balanced = [view[balanced_indices] for view in Xs]
+    y_balanced = y[balanced_indices]
+    
+    return Xs_balanced, y_balanced
     
 
 class Nhanes():
@@ -416,3 +451,37 @@ class ReutersEN:
                 Xs[i] = ch2.fit_transform(X, y)
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
+    
+class MNIST_MV_Datasets:
+    def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
+        self._name = "Corel Image Features"
+        self.dataset_path = dataset_path + f"MNIST_{sample}/"
+        self.filenames = os.listdir(self.dataset_path)
+        self.filenames.sort()
+        self.le = LabelEncoder()
+
+    def load_data(self):
+        dataset = []
+        labels = []
+        for file in self.filenames:
+            view = []
+            class_names = []
+            with open(self.dataset_path+file, 'r') as f:
+                for line in f.readlines():
+                    arr = line.split()
+                    class_names.append(arr[0])
+                    view.append([l.split(':')[1] for l in arr[1:]])
+            dataset.append(np.array(view, dtype='int'))
+            labels = np.array(class_names, dtype='str')
+            
+            self.le.fit(labels)
+            labels = self.le.transform(labels)
+        return dataset, labels
+
+    def get_data(self):
+        Xs, y = self.load_data()
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
+    
+    def get_real_classes(self, y):
+        return self.le.inverse_transform(y)
