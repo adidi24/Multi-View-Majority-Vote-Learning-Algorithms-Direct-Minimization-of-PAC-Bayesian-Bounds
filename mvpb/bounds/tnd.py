@@ -12,12 +12,13 @@ import torch.optim as optim
 from mvpb.util import kl, uniform_distribution
 
 
-def mv_tnd(emp_tnd, n, KL_QP, KL_rhopi, delta=0.05):
+def mv_tnd(emp_tnd, n, KL_QP, KL_rhopi, delta=0.05, lamb=None):
     """
     Compute the TND bound in theorem 3.2.
 
     Args:
     - emp_tnd (float): The empirical tandem risk.
+    - n (int): The number of samples.
     - KL_QP (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
     - KL_rhopi (float): The Kullback-Leibler divergence between the hyper-prior and hyper-posterior distributions.
     - delta (float, optional): The confidence level. Default is 0.05.
@@ -25,9 +26,12 @@ def mv_tnd(emp_tnd, n, KL_QP, KL_rhopi, delta=0.05):
     Returns:
     - float: The TND bound.
     """
-    lamb1 = 2.0 / (sqrt((1.0 * n * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    if lamb is None:
+        lamb = 2.0 / (sqrt((1.0 * n * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    else:
+        lamb = lamb.data.item()
     
-    bound = emp_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
+    bound = emp_tnd / (1.0 - lamb / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
     return min(1.0, 4.0*bound)
 
@@ -50,7 +54,7 @@ def tnd(emp_tnd, n, KL_QP, delta=0.05):
     
     return min(1.0, 4.0*bound)
 
-def compute_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta):
+def compute_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None):
     """
      Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 4.
 
@@ -80,14 +84,15 @@ def compute_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi,
     KL_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
     KL_rhopi = kl(softmax_posterior_rho, prior_pi)
     
-    lamb1 = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+    if lamb is None:
+        lamb = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
     
-    loss = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
+    loss = emp_mv_tnd / (1.0 - lamb / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
     return loss
 
 
-def optimizeTND_mv_torch(emp_tnd_views, n, max_iter=100, delta=0.05, eps=10**-9):
+def optimizeTND_mv_torch(emp_tnd_views, n, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -110,8 +115,13 @@ def optimizeTND_mv_torch(emp_tnd_views, n, max_iter=100, delta=0.05, eps=10**-9)
 
     prior_pi = uniform_distribution(v)
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
-    
-    all_parameters = list(posterior_Qv) + [posterior_rho]
+    lamb = None
+    if optimise_lambda:
+        # Initialisation of lambda with a random value between 0 and 2 (exclusive)
+        lamb = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True)
+        all_parameters = list(posterior_Qv) + [posterior_rho] + [lamb]
+    else:
+        all_parameters = list(posterior_Qv) + [posterior_rho] 
     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
 
     prev_loss = float('inf')
@@ -121,18 +131,21 @@ def optimizeTND_mv_torch(emp_tnd_views, n, max_iter=100, delta=0.05, eps=10**-9)
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta)
+        loss = compute_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
     
         loss.backward() # Backpropagation
-    
+
+
+        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
-    
+        if optimise_lambda:
+            lamb.data = lamb.data.clamp(0.0001, 1.9999)
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:
+            print(f"\t Convergence reached after {i} iterations")
             break
-    
+        
         prev_loss = loss.item()  # Update the previous loss with the current loss
-    
         # Optionnel: Afficher la perte pour le suivi
         # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
@@ -140,4 +153,4 @@ def optimizeTND_mv_torch(emp_tnd_views, n, max_iter=100, delta=0.05, eps=10**-9)
     with torch.no_grad():
         softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
         softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
-    return softmax_posterior_Qv, softmax_posterior_rho
+    return softmax_posterior_Qv, softmax_posterior_rho, lamb

@@ -11,13 +11,15 @@ import torch.optim as optim
 
 from mvpb.util import kl, uniform_distribution
 
-def mv_tnd_dis(emp_tnd, emp_dis, n, KL_QP, KL_rhopi, delta=0.05):
+def mv_tnd_dis(emp_tnd, emp_dis, nt, nd, KL_QP, KL_rhopi, delta=0.05, lamb1=None, lamb2=None):
     """
     Compute the TND_DIS bound in theorem 2.3.
 
     Args:
     - emp_tnd (float): The empirical tandem risk.
     - emp_dis (float): The empirical disagreement risk.
+    - nt (int): The number of samples for the tandem risk.
+    - nd (int): The number of samples for the disagreement.
     - KL_QP (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
     - KL_rhopi (float): The Kullback-Leibler divergence between the hyper-prior and hyper-posterior distributions.
     - delta (float, optional): The confidence level. Default is 0.05.
@@ -25,40 +27,47 @@ def mv_tnd_dis(emp_tnd, emp_dis, n, KL_QP, KL_rhopi, delta=0.05):
     Returns:
     - float: The TND_DIS bound.
     """
-    lamb1 = 2.0 / (sqrt((1.0 * n * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
-    lamb2 = 2.0 / (sqrt((1.0 * n * emp_dis) / (KL_QP + KL_rhopi + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
-    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(n)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
+    if lamb1 is None or lamb2 is None:
+        lamb1 = 2.0 / (sqrt((1.0 * nt * emp_tnd) / (KL_QP + KL_rhopi + log(2.0 * sqrt(nt) / delta)) + 1.0) + 1.0)
+        lamb2 = 2.0 / (sqrt((1.0 * nd * emp_dis) / (KL_QP + KL_rhopi + log(2.0 * sqrt(nd) / delta)) + 1.0) + 1.0)
+    else:
+        lamb1 = lamb1.data.item()
+        lamb2 = lamb2.data.item()
+    
+    loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + log((2.0 * sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     bound = 2*loss_term1 + loss_term2
     
     return min(1.0, bound)
 
-def tnd_dis(emp_tnd, emp_dis, n, KL_QP, delta=0.05):
+def tnd_dis(emp_tnd, emp_dis, nt, nd, KL_QP, delta=0.05):
     """
     Compute the TND_DIS bound for each view.
 
     Args:
     - emp_tnd (float): The empirical tandem risk.
     - emp_dis (float): The empirical disagreement risk.
+    - nt (int): The number of samples for the tandem risk.
+    - nd (int): The number of samples for the disagreement.
     - KL_QP (float): The Kullback-Leibler divergence between the prior and posterior distributions.
     - delta (float, optional): The confidence level. Default is 0.05.
 
     Returns:
     - float: The TND_DIS bound.
     """
-    lamb1 = 2.0 / (sqrt((2.0 * n * emp_tnd) / (2*KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
-    lamb2 = 2.0 / (sqrt((2.0 * n * emp_dis) / (2*KL_QP + log(2.0 * sqrt(n) / delta)) + 1.0) + 1.0)
+    lamb1 = 2.0 / (sqrt((2.0 * nt * emp_tnd) / (2*KL_QP + log(2.0 * sqrt(nt) / delta)) + 1.0) + 1.0)
+    lamb2 = 2.0 / (sqrt((2.0 * nd * emp_dis) / (2*KL_QP + log(2.0 * sqrt(nd) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*KL_QP + log((2.0 * sqrt(n)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
-    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*KL_QP + log((2.0 * sqrt(n)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
+    loss_term1 = emp_tnd / (1.0 - lamb1 / 2.0) + 2*KL_QP + log((2.0 * sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*KL_QP + log((2.0 * sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     bound = 2*loss_term1 + loss_term2
     
     return min(1.0, bound)
 
-def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta):
+def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, nt, nd, delta, lamb1=None, lamb2=None):
     """
      Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 4.
 
@@ -69,7 +78,8 @@ def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prio
     - posterior_rho (tensor): The hyper-posterior distribution for the weights.
     - prior_Pv (list): A list of prior distributions for each view.
     - prior_pi (tensor): The hyper-prior distribution for the weights.
-    - n (int): The number of samples.
+    - nt (int): The number of samples for the tandem risk.
+    - nd (int): The number of samples for the disagreement.
     - delta (float): The confidence parameter.
     - lamb (float): lambda.
 
@@ -93,25 +103,28 @@ def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prio
     # Compute the Kullback-Leibler divergences
     KL_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
     KL_rhopi = kl(softmax_posterior_rho, prior_pi)
-    lamb1 = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
-    lamb2 = 2.0 / (torch.sqrt((1.0 * n * emp_mv_dis) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * n)
-    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * n)
+    if lamb1 is None or lamb2 is None:
+        lamb1 = 2.0 / (torch.sqrt((1.0 * nt * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(nt) / delta)) + 1.0) + 1.0)
+        lamb2 = 2.0 / (torch.sqrt((1.0 * nd * emp_mv_dis) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(nd) / delta)) + 1.0) + 1.0)
+    
+    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     loss = loss_term1 + loss_term2/2.0
     
     return loss
 
 
-def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, n, max_iter=100, delta=0.05, eps=10**-9):
+def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
     Args:
     - emp_tnd_views (list): A list of empirical tandem risks for each view.
     - emp_dis_views (list): A list of empirical disagreements for each view.
-    - n (list): The number of samples.
+    - nt (int): The number of samples for the tandem risk.
+    - nd (int): The number of samples for the disagreement.
     - delta (float, optional): The confidence level. Default is 0.05.
     - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
 
@@ -130,7 +143,14 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, n, max_iter=100, delt
     prior_pi = uniform_distribution(v)
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
     
-    all_parameters = list(posterior_Qv) + [posterior_rho]
+    lamb1, lamb2 = None, None
+    if optimise_lambdas:
+        # Initialisation of lambda with a random value between 0 and 2 (exclusive)
+        lamb1 = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True)
+        lamb2 = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True)
+        all_parameters = list(posterior_Qv) + [posterior_rho] + [lamb1] + [lamb2]
+    else:
+        all_parameters = list(posterior_Qv) + [posterior_rho] 
     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
 
     prev_loss = float('inf')
@@ -140,18 +160,23 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, n, max_iter=100, delt
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta)
+        loss = compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, nt, nd, delta, lamb1, lamb2)
     
         loss.backward() # Backpropagation
-    
+
+        torch.nn.utils.clip_grad_norm_(all_parameters, 5.0)
         optimizer.step() # Update the parameters
-    
+        
+        if optimise_lambdas:
+            lamb1.data = lamb1.data.clamp(0.0001, 1.9999)
+            lamb2.data = lamb2.data.clamp(0.0001, 1.9999)
+
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:
+            print(f"\t Convergence reached after {i} iterations")
             break
-    
+        
         prev_loss = loss.item()  # Update the previous loss with the current loss
-    
         # Optionnel: Afficher la perte pour le suivi
         # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
@@ -159,4 +184,4 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, n, max_iter=100, delt
     with torch.no_grad():
         softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
         softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
-    return softmax_posterior_Qv, softmax_posterior_rho
+    return softmax_posterior_Qv, softmax_posterior_rho, lamb1, lamb2
