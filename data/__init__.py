@@ -6,5 +6,6 @@ from .datasets import (MultipleFeatures,
                        ReutersEN,
                        IS,
                        CorelImageFeatures,
+                       NUS_WIDE_OBJECT,
                        train_test_split, train_test_merge, s1_s2_split,
                        multiclass_to_binary, balance_dataset)

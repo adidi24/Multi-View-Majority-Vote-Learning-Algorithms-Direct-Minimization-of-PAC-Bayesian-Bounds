@@ -500,7 +500,8 @@ class NUS_WIDE_OBJECT:
 
     def load_data(self):
         dataset = []
-        labels = []
+        y_train, y_test = [], []
+        train_set, test_set = [], []
 
         for file in  self.nus_features_files_path:
             view = file.split('_')[1].split('.')[0]
@@ -508,7 +509,10 @@ class NUS_WIDE_OBJECT:
                 data = []
                 for line in f.readlines():
                     data.append([float(x) for x in line.split()])
-                dataset.append(np.array(data))
+                if 'Train' in file:
+                    train_set.append(np.array(data))
+                else:
+                    test_set.append(np.array(data))
                 self.views.append(view)
         
         for file in self.nus_labels_files_path:
@@ -516,9 +520,14 @@ class NUS_WIDE_OBJECT:
                 data = []
                 for line in f.readlines():
                     data.append(int(line))
-                labels.append(data)
+                if 'Train' in file:
+                    y_train.append(data)
+                else:  
+                    y_test.append(data)
         
-        labels = np.array(labels).transpose()
+        for xtr, xts in zip(train_set, test_set):
+            dataset.append(np.concatenate([xtr[:,:-1], xts[:,:-1]], axis=0))
+        labels = np.concatenate([y_train, y_test], axis=1).transpose()
         
         # Remove labels with less than min_pos_samples positive samples
         selected_labels = np.where(labels.sum(axis=0) > self.min_pos_samples)[0]
