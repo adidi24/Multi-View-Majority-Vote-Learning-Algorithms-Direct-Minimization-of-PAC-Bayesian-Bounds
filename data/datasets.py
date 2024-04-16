@@ -485,3 +485,48 @@ class MNIST_MV_Datasets:
     
     def get_real_classes(self, y):
         return self.le.inverse_transform(y)
+
+class NUS_WIDE_OBJECT:
+    def __init__(self, dataset_path = os.getcwd()+'/data/NUS-WIDE-OBJECT/', min_pos_samples=1000):
+        self._name = "NUS-WIDE-OBJECT"
+        self.dataset_path = dataset_path
+        self.nus_features_files_path = os.listdir(dataset_path+"low level features")
+        self.nus_features_files_path.sort()
+        self.nus_labels_files_path = os.listdir(dataset_path+"ground truth")
+        self.nus_labels_files_path.sort()
+        self.min_pos_samples = min_pos_samples
+        
+        self.views = []
+
+    def load_data(self):
+        dataset = []
+        labels = []
+
+        for file in  self.nus_features_files_path:
+            view = file.split('_')[1].split('.')[0]
+            with open(f"{self.dataset_path}low level features/{file}", 'r') as f:
+                data = []
+                for line in f.readlines():
+                    data.append([float(x) for x in line.split()])
+                dataset.append(np.array(data))
+                self.views.append(view)
+        
+        for file in self.nus_labels_files_path:
+            with open(f"{self.dataset_path}ground truth/{file}", 'r') as f:
+                data = []
+                for line in f.readlines():
+                    data.append(int(line))
+                labels.append(data)
+        
+        labels = np.array(labels).transpose()
+        
+        # Remove labels with less than min_pos_samples positive samples
+        selected_labels = np.where(labels.sum(axis=0) > self.min_pos_samples)[0]
+        labels = labels[:, selected_labels]
+        
+        return dataset, labels
+
+    def get_data(self):
+        Xs, y = self.load_data()
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
