@@ -134,7 +134,8 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
         all_parameters = list(posterior_Qv) + [posterior_rho] + [lamb]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
-    optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
+        
+    optimizer = optim.SGD(all_parameters, lr=0.05,momentum=0.9)
 
     prev_loss = float('inf')
 

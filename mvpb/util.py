@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import math
 from math import log
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
 
 import torch.nn.functional as F
 
@@ -158,7 +158,7 @@ def risk(preds, targs):
     float: The risk value, calculated as 1.0 minus the accuracy score.
     """
     assert(preds.shape == targs.shape)
-    return 1.0 - accuracy_score(preds, targs)
+    return 1.0 - accuracy_score(targs, preds)
 
 def mv_preds(posterior, preds):
     """

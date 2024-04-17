@@ -311,7 +311,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
         return (mvP, util.risk(mvP, Y), v_risks) if Y is not None else mvP
     
-    def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, optimise_lambda_gamma=False):
+    def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False):
         allowed_bounds = {'PBkl', 'Lambda', 'TND_DIS', 'TND', 'DIS'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
@@ -338,7 +338,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
             ns_min = torch.tensor(np.min(ns_views))
 
-            posterior_Qv, posterior_rho, lamb = optimizeLamb_mv_torch(emp_risks_views, ns_min, optimise_lambda=optimise_lambda_gamma)
+            posterior_Qv, posterior_rho, lamb = optimizeLamb_mv_torch(emp_risks_views, ns_min, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma)
             
             # print(f"{lamb=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
