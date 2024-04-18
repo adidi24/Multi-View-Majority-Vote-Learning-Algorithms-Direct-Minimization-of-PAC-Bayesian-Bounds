@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Jun  1 08:30:46 2023
 
-@authors: mehdihennequin, abdelkrimzitouni
-"""
 import csv
 import os
 import glob
@@ -19,15 +14,7 @@ import numpy as np
 import scipy.sparse as sp
 import re
 
-def train_test_merge(Xs_train, y_train, Xs_test, y_test):
-    Xs = []
-    y = np.concatenate((y_train, y_test))
-    for xtr, xts in zip(Xs_train, Xs_test):
-        Xs.append(np.concatenate((xtr, xts)))
-    return Xs, y
-    
-    
-def train_test_split(Xs, labels, test_size=0.3, random_state=42):
+def train_test_split(Xs, labels, test_size=0.2, random_state=42):
 
     num_views = len(Xs)
     num_samples = len(labels)
@@ -48,90 +35,6 @@ def train_test_split(Xs, labels, test_size=0.3, random_state=42):
     y_test = labels[test_indices]
 
     return Xs_train, y_train, Xs_test, y_test
-
-def s1_s2_split(Xs_train, y_train, Xs_test, y_test, s1_size=0.4, random_state=42):
-    num_views = len(Xs_train)
-    train_samples = len(y_train)
-    test_samples = len(y_test)
-
-    # Shuffle the indices
-    train_indices, test_indices = np.arange(train_samples), np.arange(test_samples)
-    np.random.seed(random_state)
-    np.random.shuffle(train_indices)
-    np.random.shuffle(test_indices)
-
-    # Split data and labels
-    s1_train_split_index = int(train_samples * s1_size)
-    s1_test_split_index = int(test_samples * s1_size)
-    s1_train_indices, s2_train_indices = train_indices[:s1_train_split_index], train_indices[s1_train_split_index:]
-    s1_test_indices, s2_test_indices = test_indices[:s1_test_split_index], test_indices[s1_test_split_index:]
-
-    # print(f"{s1_train_split_index=}\n {s1_test_split_index=}")
-    # print(f"{train_indices.shape=}\n {test_indices.shape=}")
-    # print(f"{s1_train_indices.shape=}\n {s2_train_indices.shape=}")
-    # print(f"{s1_test_indices.shape=}\n {s2_test_indices.shape=}")
-    s1_Xs_train = [view[s1_train_indices] for view in Xs_train]
-    s1_y_train = y_train[s1_train_indices]
-    s1_Xs_test = [view[s1_test_indices] for view in Xs_test]
-    s1_y_test = y_test[s1_test_indices]
-
-    s2_Xs_train = [view[s2_train_indices] for view in Xs_train]
-    s2_y_train = y_train[s2_train_indices]
-    s2_Xs_test = [view[s2_test_indices] for view in Xs_test]
-    s2_y_test = y_test[s2_test_indices]
-    
-    s1 = {
-        "Xs_train":s1_Xs_train,
-        "y_train":s1_y_train,
-        "Xs_test":s1_Xs_test,
-        "y_test":s1_y_test
-    }
-    
-    s2 = {
-        "Xs_train":s2_Xs_train,
-        "y_train":s2_y_train,
-        "Xs_test":s2_Xs_test,
-        "y_test":s2_y_test
-    }
-    
-    return s1, s2
-
-def multiclass_to_binary(Xs_train, y_train, Xs_test, y_test, label_index):
-    if len(np.unique(y_train)) == 2 and len(np.unique(y_test)) == 2:
-        print("The dataset is already binary, returning it as is.")
-        return Xs_train, y_train, Xs_test, y_test
-    
-    binary_y_train = np.where(y_train == label_index, 1, 0)
-    binary_y_test = np.where(y_test == label_index, 1, 0)
-    
-    # Balance the binary dataset
-    Xs_train_balanced, binary_y_train_balanced = balance_dataset(Xs_train, binary_y_train)
-    
-    return Xs_train_balanced, binary_y_train_balanced, Xs_test, binary_y_test
-
-def balance_dataset(Xs, y):
-    # Count the number of positive and negative samples
-    num_positive = np.sum(y == 1)
-    num_negative = np.sum(y == 0)
-    
-    minority_label = 1 if num_positive < num_negative else 0
-    majority_label = 0 if minority_label == 1 else 1
-    
-    # Find the indices of the minority and majority class samples
-    minority_indices = np.where(y == minority_label)[0]
-    majority_indices = np.where(y == majority_label)[0]
-    
-    # Randomly sample the majority class samples to match the number of minority class samples
-    majority_indices_balanced = np.random.choice(majority_indices, size=num_positive, replace=False)
-    
-    balanced_indices = np.concatenate((minority_indices, majority_indices_balanced))
-    np.random.shuffle(balanced_indices)
-    
-    Xs_balanced = [view[balanced_indices] for view in Xs]
-    y_balanced = y[balanced_indices]
-    
-    return Xs_balanced, y_balanced
-    
 
 class Nhanes():
     
@@ -234,7 +137,7 @@ class Nhanes():
 
 class MultipleFeatures:
     def __init__(self, dataset_path = os.getcwd()+'/data/mfeat/'):
-        self._name = "Multiple Features"
+        self._name = "Multiple-Features"
         self.dataset_path = dataset_path
         self.feature_sets = ["mfeat-fou", "mfeat-fac", "mfeat-kar", "mfeat-pix", "mfeat-zer", "mfeat-mor"]
         self.Xs = []
@@ -251,7 +154,7 @@ class MultipleFeatures:
                 raise FileNotFoundError(f"{feature_set}.csv not found in {self.dataset_path}")
         
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         if self.Xs == [] or self.y == None:
             self.load_data()
         Xs_train, y_train, Xs_test, y_test = train_test_split(self.Xs, self.y)
@@ -259,7 +162,7 @@ class MultipleFeatures:
     
 class SampleData:
     def __init__(self, dataset_path = os.getcwd()+'/data/sample_data/'):
-        self._name = "Sample Data"
+        self._name = "Sample-Data"
         self.dataset_path = dataset_path
         self.views = ['view1', 'view2', 'view3', 'view4']
         self.Xs_train = []
@@ -283,7 +186,7 @@ class SampleData:
                                                         view + "_y_test.p", "rb"), encoding='latin1'))
         
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         self.load_data()
         return self.Xs_train, np.array(self.y_train), self.Xs_test, np.array(self.y_test)
 
@@ -311,10 +214,12 @@ class Nutrimouse:
             self.dataset[fname] = y
             self.dataset[f'{fname}_names'] = class_names
 
-    def get_data(self):
+    def get_data(self, selected_label=0):
         self.load_data()
         Xs = [self.dataset[X_key] for X_key in self.Xs_filenames]
         y = np.vstack([self.dataset[y_key] for y_key in self.y_filenames]).T
+        if y.ndim == 2:
+            y = y[:, selected_label]
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
         
@@ -333,7 +238,7 @@ class ALOI:
             dataset.append(numerical_df.to_numpy())
         return dataset
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         dataset = self.load_data()
         Xs = dataset[:-1]
         y = dataset[-1]
@@ -342,7 +247,7 @@ class ALOI:
 
 class IS:
     def __init__(self):
-        self._name = "Image Segmentation"
+        self._name = "Image-Segmentation"
         self.le = LabelEncoder()
 
     def load_data(self):
@@ -352,7 +257,7 @@ class IS:
         labels = self.le.transform(image_segmentation.data.targets)
         return  image_segmentation.data, labels
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         dataset, y = self.load_data()
         
         Xs = [dataset.features.iloc[:, :9].values, dataset.features.iloc[:, 9:].values]
@@ -365,7 +270,7 @@ class IS:
     
 class CorelImageFeatures:
     def __init__(self, dataset_path = os.getcwd()+'/data/corel_features/'):
-        self._name = "Corel Image Features"
+        self._name = "Corel-Image-Features"
         self.dataset_path = dataset_path
         self.filenames = os.listdir(dataset_path)
         self.le = LabelEncoder()
@@ -382,7 +287,7 @@ class CorelImageFeatures:
                 labels = self.le.transform(labels)
         return dataset, labels
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         Xs, y = self.load_data()
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
@@ -441,7 +346,7 @@ class ReutersEN:
             affectations = [line.strip() for line in f]
         return np.array(affectations, dtype=int)
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         Xs = self.load_data()
         y = self.load_affectations()
         if self.select_chi2 is not None:
@@ -454,11 +359,13 @@ class ReutersEN:
     
 class MNIST_MV_Datasets:
     def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
-        self._name = "Corel Image Features"
+        self._name = "Corel-Image-Features"
         self.dataset_path = dataset_path + f"MNIST_{sample}/"
         self.filenames = os.listdir(self.dataset_path)
         self.filenames.sort()
-        self.le = LabelEncoder()
+        self.label_mapping = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+                 "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
+        self.inverted_label_mapping = {v: k for k, v in self.label_mapping.items()}
 
     def load_data(self):
         dataset = []
@@ -474,17 +381,16 @@ class MNIST_MV_Datasets:
             dataset.append(np.array(view, dtype='int'))
             labels = np.array(class_names, dtype='str')
             
-            self.le.fit(labels)
-            labels = self.le.transform(labels)
-        return dataset, labels
+            elabels = np.array([self.label_mapping[label] for label in labels])
+        return dataset, elabels
 
-    def get_data(self):
+    def get_data(self, **kwargs):
         Xs, y = self.load_data()
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
     
     def get_real_classes(self, y):
-        return self.le.inverse_transform(y)
+        return np.array([self.inverted_label_mapping[label] for label in y])
 
 class NUS_WIDE_OBJECT:
     def __init__(self, dataset_path = os.getcwd()+'/data/NUS-WIDE-OBJECT/', min_pos_samples=1000):
@@ -535,7 +441,10 @@ class NUS_WIDE_OBJECT:
         
         return dataset, labels
 
-    def get_data(self):
+    def get_data(self, selected_label=0):
         Xs, y = self.load_data()
+        if y.ndim == 2:
+            y = y[:, selected_label]
+        # Xs_balanced, y_balanced = balance_dataset(Xs, y)
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test

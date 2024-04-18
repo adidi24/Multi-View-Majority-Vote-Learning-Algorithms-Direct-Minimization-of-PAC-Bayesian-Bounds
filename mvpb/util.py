@@ -158,7 +158,7 @@ def risk(preds, targs):
     float: The risk value, calculated as 1.0 minus the accuracy score.
     """
     assert(preds.shape == targs.shape)
-    return 1.0 - accuracy_score(targs, preds)
+    return 1.0 - balanced_accuracy_score(targs, preds)
 
 def mv_preds(posterior, preds):
     """
