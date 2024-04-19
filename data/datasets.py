@@ -426,6 +426,39 @@ class Fash_MNIST_MV_Datasets:
     def get_real_classes(self, y):
         return np.array([self.inverted_label_mapping[label] for label in y])
     
+class EMNIST_Letters_MV_Datasets:
+    def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
+        self._name = "EMNIST-Letters-MV"
+        self.dataset_path = dataset_path + f"EMNIST_Letters_{sample}/"
+        self.filenames = os.listdir(self.dataset_path)
+        self.filenames.sort()
+        self.label_mapping = {chr(i + 65): i for i in range(26)}
+        self.inverted_label_mapping = {v: k for k, v in self.label_mapping.items()}
+
+    def load_data(self):
+        dataset = []
+        labels = []
+        for file in self.filenames:
+            view = []
+            labels = []
+            with open(self.dataset_path+file, 'r') as f:
+                for line in f.readlines():
+                    arr = line.split()
+                    labels.append(arr[0])
+                    view.append([val for val in arr[1:]])
+            dataset.append(np.array(view, dtype='int'))
+            labels = np.array(labels, dtype='int')
+
+        return dataset, labels
+
+    def get_data(self, **kwargs):
+        Xs, y = self.load_data()
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
+    
+    def get_real_classes(self, y):
+        return np.array([self.inverted_label_mapping[label] for label in y])
+    
 class NUS_WIDE_OBJECT:
     def __init__(self, dataset_path = os.getcwd()+'/data/NUS-WIDE-OBJECT/', min_pos_samples=1000):
         self._name = "NUS-WIDE-OBJECT"

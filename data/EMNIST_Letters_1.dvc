@@ -1,0 +1,6 @@
+outs:
+- md5: 336526f70ed871dbea032efea1150dca.dir
+  size: 201050621
+  nfiles: 4
+  hash: md5
+  path: EMNIST_Letters_1
