@@ -242,6 +242,7 @@ class ALOI:
         dataset = self.load_data()
         Xs = dataset[:-1]
         y = dataset[-1]
+        y = np.argmax(y, axis=1)
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
 
@@ -259,7 +260,6 @@ class IS:
 
     def get_data(self, **kwargs):
         dataset, y = self.load_data()
-        
         Xs = [dataset.features.iloc[:, :9].values, dataset.features.iloc[:, 9:].values]
         
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
@@ -359,7 +359,7 @@ class ReutersEN:
     
 class MNIST_MV_Datasets:
     def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
-        self._name = "Corel-Image-Features"
+        self._name = "MNIST-MV"
         self.dataset_path = dataset_path + f"MNIST_{sample}/"
         self.filenames = os.listdir(self.dataset_path)
         self.filenames.sort()
@@ -392,6 +392,40 @@ class MNIST_MV_Datasets:
     def get_real_classes(self, y):
         return np.array([self.inverted_label_mapping[label] for label in y])
 
+class Fash_MNIST_MV_Datasets:
+    def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
+        self._name = "Fashion-MNIST-MV"
+        self.dataset_path = dataset_path + f"Fash_MNIST_{sample}/"
+        self.filenames = os.listdir(self.dataset_path)
+        self.filenames.sort()
+        self.label_mapping = {"T-shirt/top": 0, "Trouser": 1, "Pullover": 2, "Pullover": 3, "Coat": 4,
+                 "Sandal": 5, "Shirt": 6, "Sneakerv": 7, "Bag": 8, "Ankle boot": 9}
+        self.inverted_label_mapping = {v: k for k, v in self.label_mapping.items()}
+
+    def load_data(self):
+        dataset = []
+        labels = []
+        for file in self.filenames:
+            view = []
+            labels = []
+            with open(self.dataset_path+file, 'r') as f:
+                for line in f.readlines():
+                    arr = line.split()
+                    labels.append(arr[0])
+                    view.append([val for val in arr[1:]])
+            dataset.append(np.array(view, dtype='int'))
+            labels = np.array(labels, dtype='int')
+
+        return dataset, labels
+
+    def get_data(self, **kwargs):
+        Xs, y = self.load_data()
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
+    
+    def get_real_classes(self, y):
+        return np.array([self.inverted_label_mapping[label] for label in y])
+    
 class NUS_WIDE_OBJECT:
     def __init__(self, dataset_path = os.getcwd()+'/data/NUS-WIDE-OBJECT/', min_pos_samples=1000):
         self._name = "NUS-WIDE-OBJECT"

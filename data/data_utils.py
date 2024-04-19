@@ -131,3 +131,19 @@ def other_binary_options(dataset, y_train, y_test):
         y_train = np.array([1 if value in [2, 3, 6] else 0 for value in y_train])
         y_test = np.array([1 if value in [2, 3, 6] else 0 for value in y_test])
     return y_train,y_test
+
+def poison_dataset(Xs_train, y_train, poison_label=1, target_label=7, target_view=0, num_samples=50):
+    view = Xs_train[target_view]
+    
+    # Select samples to poison (e.g., samples labeled as '1')
+    poison_indices = np.where((y_train == poison_label) | (y_train == target_label))[0][:num_samples]
+    
+    # Poison the selected samples with random noise
+    for idx in poison_indices:
+        sample =  view[idx]
+        noise = np.random.rand(sample.shape[0]) * 1  # Add random noise scaled by a factor
+        poisoned_sample = sample + noise
+        Xs_train[target_view][idx] = poisoned_sample
+
+    
+    return Xs_train, y_train

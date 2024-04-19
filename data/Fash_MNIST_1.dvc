@@ -1,0 +1,6 @@
+outs:
+- md5: 2fc751710de065100d4a98a3c8555656.dir
+  size: 155629976
+  nfiles: 4
+  hash: md5
+  path: Fash_MNIST_1
