@@ -515,3 +515,25 @@ class NUS_WIDE_OBJECT:
         # Xs_balanced, y_balanced = balance_dataset(Xs, y)
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
+    
+class Mushrooms:
+    def __init__(self, dataset_path = os.getcwd()+'/data/Mushroom/'):
+        self._name = "Mushrooms"
+        self.dataset_path = dataset_path
+        self.filenames = os.listdir(dataset_path)
+        self.filenames.sort()
+
+    def load_data(self):
+        dataset = []
+        for file in self.filenames:
+            if file.endswith('.csv'):
+                data = pd.read_csv(self.dataset_path+file)
+                dataset.append(data.to_numpy())
+            else:
+                labels = pd.read_csv(self.dataset_path+file).to_numpy().ravel()
+        return dataset, labels
+
+    def get_data(self, **kwargs):
+        Xs, y = self.load_data()
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
