@@ -23,15 +23,10 @@ from torch.utils.data import DataLoader,Dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-from .bounds import (optimizeLamb_mv_torch, 
-                     PBkl, mv_PBkl, mv_lamb, lamb, 
-                     optimizeTND_DIS_mv_torch,
-                     tnd_dis, mv_tnd_dis,
-                     tnd, mv_tnd,
-                     optimizeTND_mv_torch,
-                     dis, mv_dis,
-                     optimizeDIS_mv_torch)
+import mvpb.bounds_alpha1_KL as bkl
+import mvpb.bounds_renyi as br
 from .util import uniform_distribution, mv_preds, risk, kl
+from .util import renyi_divergence as rd
 import mvpb.util as util
 
 
@@ -171,7 +166,7 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
 
         # set up DataLoader for training set
         dataset = Dataset(self.X_, self.y_)
-        loader = DataLoader(dataset, shuffle=True, batch_size=256, num_workers=2, pin_memory=True)
+        loader = DataLoader(dataset, shuffle=True, batch_size=64, num_workers=4, pin_memory=True)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-5)
 
         self.model.train()
@@ -312,7 +307,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
         return (mvP, util.risk(mvP, Y), v_risks) if Y is not None else mvP
     
-    def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False):
+    def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
         allowed_bounds = {'PBkl', 'Lambda', 'TND_DIS', 'TND', 'DIS'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
@@ -339,7 +334,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
             ns_min = torch.tensor(np.min(ns_views))
 
-            posterior_Qv, posterior_rho, lamb = optimizeLamb_mv_torch(emp_risks_views, ns_min, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma)
+            if alpha == 1:
+                posterior_Qv, posterior_rho, lamb = bkl.optimizeLamb_mv_torch(emp_risks_views, ns_min, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma)
+            else:
+                posterior_Qv, posterior_rho, lamb = br.optimizeLamb_mv_torch(emp_risks_views, ns_min, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -354,7 +352,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             nt = torch.tensor(np.min(ns_views_t))
             nd = torch.tensor(np.min(ns_views_d))
 
-            posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, optimise_lambdas=optimise_lambda_gamma)
+            if alpha == 1:
+                posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = bkl.optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, optimise_lambdas=optimise_lambda_gamma)
+            else:
+                posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = br.optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             # print(f"{lamb1_tnd_dis=}, {lamb2_tnd_dis=}")
@@ -367,7 +368,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             emp_trisks_views = np.divide(trisks_views, ns_views, where=ns_views!=0)
             ns_min = torch.tensor(np.min(ns_views))
 
-            posterior_Qv, posterior_rho, lamb_tnd = optimizeTND_mv_torch(emp_trisks_views, ns_min, optimise_lambda=optimise_lambda_gamma)
+            if alpha == 1:
+                posterior_Qv, posterior_rho, lamb_tnd = bkl.optimizeTND_mv_torch(emp_trisks_views, ns_min, optimise_lambda=optimise_lambda_gamma)
+            else:
+                posterior_Qv, posterior_rho, lamb_tnd = br.optimizeTND_mv_torch(emp_trisks_views, ns_min, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_tnd=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -381,7 +385,10 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             ng = torch.tensor(np.min(ns_views_g))
             nd = torch.tensor(np.min(ns_views_d))
 
-            posterior_Qv, posterior_rho, lamb_dis, gamma_dis = optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, optimise_lambda_gamma=optimise_lambda_gamma)
+            if alpha == 1:
+                posterior_Qv, posterior_rho, lamb_dis, gamma_dis = bkl.optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, optimise_lambda_gamma=optimise_lambda_gamma)
+            else:
+                posterior_Qv, posterior_rho, lamb_dis, gamma_dis = br.optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_dis=}, {gamma_dis=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -391,7 +398,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         else:
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
 
-    def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True):
+    def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, alpha=1.0):
         if bound not in ['PBkl', 'Lambda', 'TND_DIS', 'TND', 'DIS']:
             raise Exception("Warning, ViewClassifier.bound: Unknown bound!")
         
@@ -415,56 +422,87 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         with torch.no_grad():
             prior_pi = uniform_distribution(v)
             prior_Pv = [uniform_distribution(m)]*v
-            KL_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
-            KL_QP = torch.sum(torch.stack(KL_QPs) * self.posterior_rho)
-            # print(f"{self.posterior_rho=},  {prior_pi=}")
-            KL_rhopi = kl(self.posterior_rho, prior_pi)
+            if alpha==1:
+                KL_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+                KL_QP = torch.sum(torch.stack(KL_QPs) * self.posterior_rho)
+                # print(f"{self.posterior_rho=},  {prior_pi=}")
+                KL_rhopi = kl(self.posterior_rho, prior_pi)
+            else:
+                RD_QPs = [rd(q, p, alpha)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+                RD_QP = torch.sum(torch.stack(RD_QPs) * self.posterior_rho)
+                RD_rhopi = rd(self.posterior_rho, prior_pi, alpha)
         
         # print(f"{KL_rhopi=},  {KL_QP=}")
         if bound == 'PBkl':
             emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
             
             # Compute the PB-kl bound for each view and for the multiview resp.
-            pbkl_views = [PBkl(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
-            return (mv_PBkl(emp_mv_risk, ns, KL_QP, KL_rhopi),
+            if alpha==1:
+                pbkl_views = [bkl.PBkl(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
+                return (bkl.mv_PBkl(emp_mv_risk, ns, KL_QP, KL_rhopi),
                     pbkl_views)
+            else:
+                raise Exception("Warning, ViewClassifier.bound: PBkl not implemented for alpha != 1")
+            
         elif bound == 'Lambda':
             emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
-            lamb_per_view = [lamb(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
-            return (mv_lamb(emp_mv_risk, ns, KL_QP.item(), KL_rhopi.item(), lamb=self.lamb),
-                    lamb_per_view)
+            if alpha==1:
+                lamb_per_view = [bkl.lamb(risk, ns, KL_QPs[i].item()) for i, risk in enumerate(emp_risks_views)]
+                return (bkl.mv_lamb(emp_mv_risk, ns, KL_QP.item(), KL_rhopi.item(), lamb=self.lamb),
+                        lamb_per_view)
+            else:
+                lamb_per_view = [br.lamb(risk, ns, RD_QPs[i].item(), alpha) for i, risk in enumerate(emp_risks_views)]
+                return (br.mv_lamb(emp_mv_risk, ns, RD_QP.item(), RD_rhopi.item(), lamb=self.lamb),
+                        lamb_per_view)
         elif bound == 'TND_DIS':
             emp_trisks_views, emp_mv_trisk, nt = self.mv_tandem_risk(labeled_data, incl_oob)
             emp_dis_views, emp_mv_dis, nd = self.mv_disagreement(ulX, incl_oob)
             
             # Compute the TND_DIS bound for each view and for the multiview resp.
-            tnd_per_view = [tnd_dis(trisk, emp_dis_views[i], nt, nd, KL_QPs[i].item()) for i, trisk in enumerate(emp_trisks_views)]
-            return (mv_tnd_dis(emp_mv_trisk, 
-                               emp_mv_dis, nt, nd, 
-                               KL_QP.item(), KL_rhopi.item(), 
-                               lamb1=self.lamb1_tnd_dis, lamb2=self.lamb2_tnd_dis),
-                    tnd_per_view)
+            if alpha==1:
+                tnd_per_view = [bkl.tnd_dis(trisk, emp_dis_views[i], nt, nd, KL_QPs[i].item()) for i, trisk in enumerate(emp_trisks_views)]
+                return (bkl.mv_tnd_dis(emp_mv_trisk, 
+                                emp_mv_dis, nt, nd, 
+                                KL_QP.item(), KL_rhopi.item(), 
+                                lamb1=self.lamb1_tnd_dis, lamb2=self.lamb2_tnd_dis),
+                        tnd_per_view)
+            else:
+                tnd_per_view = [br.tnd_dis(trisk, emp_dis_views[i], nt, nd, RD_QPs[i].item(), alpha) for i, trisk in enumerate(emp_trisks_views)]
+                return (br.mv_tnd_dis(emp_mv_trisk, emp_mv_dis, nt, nd, 
+                                RD_QP.item(), RD_rhopi.item(), 
+                                lamb1=self.lamb1_tnd_dis, lamb2=self.lamb2_tnd_dis),
+                        tnd_per_view)
         elif bound == 'TND':
             emp_trisks_views, emp_mv_trisk, n = self.mv_tandem_risk(labeled_data, incl_oob)
             
             # Compute the TND bound for each view and for the multiview resp.
-            tnd_per_view = [tnd(trisk, n, KL_QPs[i].item()) for i, trisk in enumerate(emp_trisks_views)]
-            return (mv_tnd(emp_mv_trisk, n, KL_QP.item(), KL_rhopi.item(), lamb=self.lamb_tnd),
-                    tnd_per_view)
+            if alpha==1:
+                tnd_per_view = [bkl.tnd(trisk, n, KL_QPs[i].item()) for i, trisk in enumerate(emp_trisks_views)]
+                return (bkl.mv_tnd(emp_mv_trisk, n, KL_QP.item(), KL_rhopi.item(), lamb=self.lamb_tnd),
+                        tnd_per_view)
+            else:
+                tnd_per_view = [br.tnd(trisk, n, RD_QPs[i].item(), alpha) for i, trisk in enumerate(emp_trisks_views)]
+                return (br.mv_tnd(emp_mv_trisk, n, RD_QP.item(), RD_rhopi.item(), lamb=self.lamb_tnd),
+                        tnd_per_view)
         elif bound == 'DIS':
             emp_risks_views, emp_mv_risk, ng = self.mv_risks(labeled_data, incl_oob)
             emp_dis_views, emp_mv_dis, nd = self.mv_disagreement(ulX, incl_oob)
             
             # Compute the DIS bound for each view and for the multiview resp.
-            tnd_per_view = [dis(grisk, emp_dis_views[i], ng, nd, KL_QPs[i].item()) for i, grisk in enumerate(emp_risks_views)]
-            return (mv_dis(emp_mv_risk,
-                           emp_mv_dis, ng, nd,
-                           KL_QP.item(), KL_rhopi.item(),
-                           lamb=self.lamb_dis, gamma=self.gamma_dis),
-                    tnd_per_view)
-            
+            if alpha==1:
+                tnd_per_view = [bkl.dis(grisk, emp_dis_views[i], ng, nd, KL_QPs[i].item()) for i, grisk in enumerate(emp_risks_views)]
+                return (bkl.mv_dis(emp_mv_risk, emp_mv_dis, ng, nd,
+                            KL_QP.item(), KL_rhopi.item(),
+                            lamb=self.lamb_dis, gamma=self.gamma_dis),
+                        tnd_per_view)
+            else:
+                tnd_per_view = [br.dis(grisk, emp_dis_views[i], ng, nd, RD_QPs[i].item(), alpha) for i, grisk in enumerate(emp_risks_views)]
+                return (br.mv_dis(emp_mv_risk, emp_mv_dis, ng, nd,
+                            RD_QP.item(), RD_rhopi.item(),
+                            lamb=self.lamb_dis, gamma=self.gamma_dis),
+                        tnd_per_view)
         
     def set_posteriors(self, posterior_rho, posterior_Qv):
         self.posterior_rho = posterior_rho

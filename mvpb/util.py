@@ -14,13 +14,37 @@ import numpy.linalg as la
 def kl(Q, P):
     """
     Compute the Kullback-Leibler (KL) divergence between two probability distributions Q and P.
+    
     Args:
         Q (torch.Tensor): The first probability distribution.
         P (torch.Tensor): The second probability distribution.
+    
     Returns:
         torch.Tensor: The KL divergence between Q and P.
     """
+    assert Q.size() == P.size(), "Distributions must have the same size"
     return F.kl_div(Q.log(), P, reduction='sum')
+
+import torch
+
+def renyi_divergence(Q, P, alpha):
+    """
+    Compute the Renyi divergence between two probability distributions.
+
+    Args:
+        Q (torch.Tensor): The first probability distribution.
+        P (torch.Tensor): The second probability distribution.
+        alpha (float): The parameter for Renyi divergence.
+
+    Returns:
+        torch.Tensor: The Renyi divergence between Q and P.
+    """
+    assert Q.size() == P.size(), "Distributions must have the same size"
+
+    # Compute the Renyi divergence
+    divergence = torch.log(torch.sum(torch.pow(P, alpha) * torch.pow(Q, 1 - alpha)))
+
+    return divergence
 
 
 ###############################################################################
@@ -29,16 +53,11 @@ def kl_inv(q, epsilon, mode, tol=1e-9, nb_iter_max=1000):
     Solve the optimization problem min{ p in [0, 1] | kl(q||p) <= epsilon }
     or max{ p in [0,1] | kl(q||p) <= epsilon } for q and epsilon fixed using PyTorch
 
-    Parameters
-    ----------
-    q: float or torch.Tensor
-        The parameter q of the kl divergence
-    epsilon: float or torch.Tensor
-        The upper bound on the kl divergence
-    tol: float, optional
-        The precision tolerance of the solution
-    nb_iter_max: int, optional
-        The maximum number of iterations
+    Args:
+        q (float or torch.Tensor): The parameter q of the kl divergence
+        epsilon (float or torch.Tensor): The upper bound on the kl divergence
+        tol (float, optional): The precision tolerance of the solution
+        nb_iter_max (int, optional): The maximum number of iterations
     """
     assert mode == "MIN" or mode == "MAX"
     q = torch.tensor(q, dtype=torch.float)
@@ -150,12 +169,12 @@ def risk(preds, targs):
     """
     Calculate the risk of a prediction.
 
-    Parameters:
-    preds (array-like): The predicted values.
-    targs (array-like): The target values.
+    Args:
+        preds (array-like): The predicted values.
+        targs (array-like): The target values.
 
     Returns:
-    float: The risk value, calculated as 1.0 minus the accuracy score.
+        float: The risk value, calculated as 1.0 minus the accuracy score.
     """
     assert(preds.shape == targs.shape)
     return 1.0 - balanced_accuracy_score(targs, preds)
@@ -164,15 +183,15 @@ def mv_preds(posterior, preds):
     """
     Compute the multiview predictions based on the hyper-posterior probabilities and the predictions in each view.
 
-    Parameters:
-    posterior (numpy.ndarray): The posterior probabilities of shape (m,).
-    preds (numpy.ndarray): The predictions of shape (n, m), where n is the number of samples and m is the number of views.
+    Args:
+        posterior (numpy.ndarray): The posterior probabilities of shape (m,).
+        preds (numpy.ndarray): The predictions of shape (n, m), where n is the number of samples and m is the number of views.
 
     Returns:
-    numpy.ndarray: The multiview majority vote predictions of shape (n,).
+        numpy.ndarray: The multiview majority vote predictions of shape (n,).
 
     Raises:
-    AssertionError: If the number of columns in `preds` is not equal to the number of elements in `posterior`.
+        AssertionError: If the number of columns in `preds` is not equal to the number of elements in `posterior`.
     """
 
     m = posterior.shape[0]

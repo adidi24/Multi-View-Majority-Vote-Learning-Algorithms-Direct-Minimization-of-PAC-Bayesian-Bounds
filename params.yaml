@@ -5,6 +5,7 @@ max_iter: 1000
 nb_estimators: 100
 depth: 3
 optimize_lambda_gamma: True
+alpha: 1.0
 use_unlabeled: True
 
 to_binary: None # One of ["ovr", "ovo", "other",  None]
