@@ -1,0 +1,15 @@
+nb_runs: 20
+nb_epochs: 100
+max_iter: 1000
+
+nb_estimators: 100
+depth: 3
+optimize_lambda_gamma: True
+use_unlabeled: True
+
+to_binary: None # One of ["ovr", "ovo", "other",  None]
+label_1: 0
+label_2: 1
+
+bounds: ['TND_DIS', 'TND', 'DIS', 'Lambda', 'PBkl']
+
