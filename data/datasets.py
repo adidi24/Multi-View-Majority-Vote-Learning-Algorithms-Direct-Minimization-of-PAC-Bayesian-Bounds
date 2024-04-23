@@ -537,3 +537,64 @@ class Mushrooms:
         Xs, y = self.load_data()
         Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
         return Xs_train, y_train, Xs_test, y_test
+    
+    
+class PTB_XL_plus:
+    def __init__(self, dataset_path = os.getcwd()+'/data/PTB-XL-plus/'):
+        self._name = "PTB-XL+"
+        self.dataset_path = dataset_path
+        self.filenames = os.listdir(dataset_path)
+        self.rate_missing_values = 0.5
+        self.le = LabelEncoder()
+
+    def load_data(self):
+        dataset = []
+        for file in self.filenames:
+            if file.endswith('.csv'):
+                data = pd.read_csv(self.dataset_path+file, index_col='ecg_id')
+                data.sort_values(by='ecg_id', inplace=True)
+                dataset.append(data)
+            else:
+                labels = pd.read_csv(self.dataset_path+file, index_col='ecg_id')
+                labels.sort_values(by='ecg_id', inplace=True)
+
+        # Merge all dataframes on the index (ecg_id)
+        merged_df = pd.merge(dataset[0], dataset[1], on='ecg_id')
+        for df in dataset[2:]:
+            merged_df = pd.merge(merged_df, df, on='ecg_id')
+
+        for i, data in enumerate(dataset):
+            dataset[i] = data.loc[merged_df.index] #.dropna(axis=1)
+
+        # Extract the labels
+        labels = labels.loc[merged_df.index].to_numpy().ravel()
+        self.le.fit(labels)
+        labels = self.le.transform(labels)
+        return dataset, labels
+
+    def clear_missing_values(self, dataset):
+        for i, view in enumerate(dataset):
+            numerical_cols = view.select_dtypes(include=[np.number, 'float']).columns
+            nan_cols = []
+            # print(f"View {i}:")
+            for col in view.columns:
+                missing_rate = view[col].isna().sum() / len(view.index)
+                if missing_rate >= self.rate_missing_values or view[col].nunique(col) == 1:
+                    # print(f"\t\t {col} with missing rate {missing_rate}")
+                    dataset[i] = dataset[i].drop(col, axis=1)
+                else:
+                    if col in numerical_cols:
+                        # print(f"\t\t\t\t {col} with missing rate {missing_rate}")
+                        nan_cols.append(col)
+                        column = dataset[i][col]
+                        dataset[i][col] = column.fillna(column.median())
+            dataset[i] = dataset[i].to_numpy()
+
+    def get_data(self, **kwargs):
+        Xs, y = self.load_data()
+        self.clear_missing_values(Xs)
+        Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        return Xs_train, y_train, Xs_test, y_test
+    
+    def get_real_classes(self, y):
+        return self.le.inverse_transform(y)

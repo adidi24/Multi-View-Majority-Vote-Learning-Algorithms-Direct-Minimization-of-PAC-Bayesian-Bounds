@@ -145,5 +145,4 @@ def poison_dataset(Xs_train, y_train, poison_label=1, target_label=7, target_vie
         poisoned_sample = sample + noise
         Xs_train[target_view][idx] = poisoned_sample
 
-    
     return Xs_train, y_train

@@ -1,0 +1,6 @@
+outs:
+- md5: 935c0e90aacd6b996f548e8c3c7b7c13.dir
+  size: 248008538
+  nfiles: 4
+  hash: md5
+  path: PTB-XL-plus
