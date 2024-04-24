@@ -153,9 +153,17 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, max_iter=1000
     lamb1, lamb2 = None, None
     if optimise_lambdas:
         # Initialisation of lambda with a random value between 0 and 2 (exclusive)
-        lamb1 = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True).to(device)
-        lamb2 = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True).to(device)
-        all_parameters = list(posterior_Qv) + [posterior_rho] + [lamb1] + [lamb2]
+        lamb_tensor = torch.empty(1).to(device).requires_grad_()
+        # Apply the uniform distribution
+        torch.nn.init.uniform_(lamb_tensor, 0.0001, 1.9999)
+        lamb1 = torch.nn.Parameter(lamb_tensor)
+        
+        lamb_tensor2 = torch.empty(1).to(device).requires_grad_()
+        # Apply the uniform distribution
+        torch.nn.init.uniform_(lamb_tensor2, 0.0001, 1.9999)
+        lamb2 = torch.nn.Parameter(lamb_tensor2)
+        
+        all_parameters = list(posterior_Qv) + [posterior_rho, lamb1, lamb2]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
