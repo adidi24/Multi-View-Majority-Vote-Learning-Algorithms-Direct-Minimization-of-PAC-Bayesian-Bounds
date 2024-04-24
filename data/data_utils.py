@@ -10,52 +10,29 @@ def train_test_merge(Xs_train, y_train, Xs_test, y_test):
     return Xs, y
 
 
-def s1_s2_split(Xs_train, y_train, Xs_test, y_test, s1_size=0.4, random_state=42):
+def s1_s2_split(Xs_train, y_train, s1_size=0.4, random_state=42):
     num_views = len(Xs_train)
     train_samples = len(y_train)
-    test_samples = len(y_test)
 
     # Shuffle the indices
-    train_indices, test_indices = np.arange(train_samples), np.arange(test_samples)
+    train_indices = np.arange(train_samples)
     np.random.seed(random_state)
     np.random.shuffle(train_indices)
-    np.random.shuffle(test_indices)
 
     # Split data and labels
     s1_train_split_index = int(train_samples * s1_size)
-    s1_test_split_index = int(test_samples * s1_size)
     s1_train_indices, s2_train_indices = train_indices[:s1_train_split_index], train_indices[s1_train_split_index:]
-    s1_test_indices, s2_test_indices = test_indices[:s1_test_split_index], test_indices[s1_test_split_index:]
 
     # print(f"{s1_train_split_index=}\n {s1_test_split_index=}")
-    # print(f"{train_indices.shape=}\n {test_indices.shape=}")
     # print(f"{s1_train_indices.shape=}\n {s2_train_indices.shape=}")
-    # print(f"{s1_test_indices.shape=}\n {s2_test_indices.shape=}")
     s1_Xs_train = [view[s1_train_indices] for view in Xs_train]
     s1_y_train = y_train[s1_train_indices]
-    s1_Xs_test = [view[s1_test_indices] for view in Xs_test]
-    s1_y_test = y_test[s1_test_indices]
 
     s2_Xs_train = [view[s2_train_indices] for view in Xs_train]
     s2_y_train = y_train[s2_train_indices]
-    s2_Xs_test = [view[s2_test_indices] for view in Xs_test]
-    s2_y_test = y_test[s2_test_indices]
     
-    s1 = {
-        "Xs_train":s1_Xs_train,
-        "y_train":s1_y_train,
-        "Xs_test":s1_Xs_test,
-        "y_test":s1_y_test
-    }
     
-    s2 = {
-        "Xs_train":s2_Xs_train,
-        "y_train":s2_y_train,
-        "Xs_test":s2_Xs_test,
-        "y_test":s2_y_test
-    }
-    
-    return s1, s2
+    return s1_Xs_train, s1_y_train, s2_Xs_train, s2_y_train
 
 def multiclass_to_binary(Xs_train, y_train, Xs_test, y_test, type='ovr', label_1=1, label_2=7):
     if len(np.unique(y_train)) == 2 and len(np.unique(y_test)) == 2:
