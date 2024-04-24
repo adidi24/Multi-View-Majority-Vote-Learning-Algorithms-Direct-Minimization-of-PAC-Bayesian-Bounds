@@ -132,14 +132,13 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
     prior_pi.requires_grad = False
     
-    for r in emp_risks_views:
-        r = torch.tensor(r).to(device)
+    emp_risks_views = torch.tensor(emp_risks_views).to(device)
     
     
     lamb = None
     if optimise_lambda:
         # Initialisation of lambda with a random value between 0 and 2 (exclusive)
-        lamb = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True)
+        lamb = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True).to(device)
         all_parameters = list(posterior_Qv) + [posterior_rho] + [lamb]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 

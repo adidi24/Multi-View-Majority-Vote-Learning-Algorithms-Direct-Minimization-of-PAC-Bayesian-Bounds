@@ -148,16 +148,14 @@ def optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, max_iter=1000, 
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
     prior_pi.requires_grad = False
     
-    for r in emp_risks_views:
-        r = torch.tensor(r).to(device)
-    for d in emp_dis_views:
-        d = torch.tensor(d).to(device)
+    emp_risks_views = torch.tensor(emp_risks_views).to(device)
+    emp_dis_views = torch.tensor(emp_dis_views).to(device)
     
     lamb, gamma = None, None
     if optimise_lambda_gamma:
         # Initialisation of lambda with a random value between 0 and 2 (exclusive)
-        lamb = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True)
-        gamma = torch.nn.Parameter(torch.empty(1).uniform_(0.0001), requires_grad=True)
+        lamb = torch.nn.Parameter(torch.empty(1).uniform_(0.0001, 1.9999), requires_grad=True).to(device)
+        gamma = torch.nn.Parameter(torch.empty(1).uniform_(0.0001), requires_grad=True).to(device)
         all_parameters = list(posterior_Qv) + [posterior_rho] + [lamb] + [gamma]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
