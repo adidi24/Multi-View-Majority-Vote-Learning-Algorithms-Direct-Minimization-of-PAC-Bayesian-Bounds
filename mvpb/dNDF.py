@@ -107,7 +107,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
     def predict_views(self, Xs, Y=None):
         check_is_fitted(self)
         
-        posteriors_qs = [p.data.numpy() for p in self.posterior_Qv]
+        posteriors_qs = [p.cpu().data.numpy() for p in self.posterior_Qv]
         
         ys = []
         v_risks = []
@@ -126,7 +126,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         """
         check_is_fitted(self)
         
-        rho = self.posterior_rho.data.numpy()
+        rho = self.posterior_rho.cpu().data.numpy()
         
         for i in range(self.nb_views):
             if Y is not None:
@@ -256,8 +256,8 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         
         # Compute the Kullback-Leibler divergences
         with torch.no_grad():
-            prior_pi = uniform_distribution(v)
-            prior_Pv = [uniform_distribution(m)]*v
+            prior_pi = uniform_distribution(v).to(device)
+            prior_Pv = [uniform_distribution(m).to(device)]*v
             if alpha==1:
                 KL_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
                 KL_QP = torch.sum(torch.stack(KL_QPs) * self.posterior_rho)
@@ -380,9 +380,9 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
         emp_rv = []
         for q, rv in zip(self.posterior_Qv, emp_risks_views):
-            emp_rv.append(np.average(rv, weights=q.detach().numpy(), axis=0))
+            emp_rv.append(np.average(rv, weights=q.cpu().detach().numpy(), axis=0))
 
-        emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho.detach().numpy(), axis=0)
+        emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho.cpu().detach().numpy(), axis=0)
         return np.array(emp_rv), emp_mv_risk, np.min(ns_views)
 
     
@@ -392,7 +392,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         
         emp_tnd_rv = []
         for q, rv in zip(self.posterior_Qv, trsk):
-            qv = q.detach().numpy()
+            qv = q.cpu().detach().numpy()
             emp_tnd_rv.append(np.average(np.average(rv, weights=qv, axis=0), 
                                          weights=qv))
             
@@ -400,8 +400,8 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         emp_tnd_rv = np.array(emp_tnd_rv)
         mv_trisks = np.outer(emp_tnd_rv, emp_tnd_rv)
         emp_mv_tnd_risk = np.average(
-            np.average(mv_trisks, weights=self.posterior_rho.detach().numpy(), axis=0),
-            weights=self.posterior_rho.detach().numpy())
+            np.average(mv_trisks, weights=self.posterior_rho.cpu().detach().numpy(), axis=0),
+            weights=self.posterior_rho.cpu().detach().numpy())
 
         return emp_tnd_rv, emp_mv_tnd_risk, np.min(n2)
 
@@ -440,7 +440,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         
         emp_dis_rv = []
         for q, rv in zip(self.posterior_Qv, dis):
-            qv = q.detach().numpy()
+            qv = q.cpu().detach().numpy()
             emp_dis_rv.append(np.average(np.average(rv, weights=qv, axis=0), 
                                          weights=qv))
             
@@ -448,8 +448,8 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         emp_dis_rv = np.array(emp_dis_rv)
         mv_dis = np.outer(emp_dis_rv, emp_dis_rv)
         emp_mv_dis_risk = np.average(
-            np.average(mv_dis, weights=self.posterior_rho.detach().numpy(), axis=0),
-            weights=self.posterior_rho.detach().numpy())
+            np.average(mv_dis, weights=self.posterior_rho.cpu().detach().numpy(), axis=0),
+            weights=self.posterior_rho.cpu().detach().numpy())
 
         return emp_dis_rv, emp_mv_dis_risk, np.min(n2)
 
