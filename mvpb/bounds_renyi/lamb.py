@@ -12,6 +12,7 @@ from math import ceil, log, sqrt, exp
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 from mvpb.util import uniform_distribution
 from mvpb.util import renyi_divergence as rd
@@ -89,7 +90,7 @@ def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_p
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical risk
-    emp_risks = [torch.sum(torch.tensor(view) * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
+    emp_risks = [torch.sum(view * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
 
     # Compute the Rényi divergences
@@ -122,11 +123,18 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
     v = len(emp_risks_views)
     
     # Initialisation with the uniform distribution
-    prior_Pv = [uniform_distribution(m)]*v
-    posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
+    prior_Pv = [uniform_distribution(m).to(device)]*v
+    posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True).to(device) for k in range(v)])
+    for p in prior_Pv:
+        p.requires_grad = False
 
-    prior_pi = uniform_distribution(v)
-    posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
+    prior_pi = uniform_distribution(v).to(device)
+    posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
+    prior_pi.requires_grad = False
+    
+    for r in emp_risks_views:
+        r = torch.tensor(r).to(device)
+    
     
     lamb = None
     if optimise_lambda:

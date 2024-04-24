@@ -8,6 +8,7 @@ from math import ceil, log, sqrt, exp
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 from mvpb.util import kl, uniform_distribution
 
@@ -92,11 +93,11 @@ def compute_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prio
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical tandem risk
-    emp_tnd_risks = [torch.sum(torch.sum(torch.tensor(view) * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
+    emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
     emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
     
     # Compute the empirical disagreement
-    emp_dis_risks = [torch.sum(torch.sum(torch.tensor(view) * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
+    emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
     emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
 
 
@@ -137,11 +138,19 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, max_iter=1000
     v = len(emp_tnd_views)
     
     # Initialisation with the uniform distribution
-    prior_Pv = [uniform_distribution(m)]*v
-    posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
+    prior_Pv = [uniform_distribution(m).to(device)]*v
+    posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True).to(device) for k in range(v)])
+    for p in prior_Pv:
+        p.requires_grad = False
 
-    prior_pi = uniform_distribution(v)
-    posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
+    prior_pi = uniform_distribution(v).to(device)
+    posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
+    prior_pi.requires_grad = False
+    
+    for t in emp_tnd_views:
+        t = torch.tensor(t).to(device)
+    for d in emp_dis_views:
+        d = torch.tensor(d).to(device)
     
     lamb1, lamb2 = None, None
     if optimise_lambdas:
