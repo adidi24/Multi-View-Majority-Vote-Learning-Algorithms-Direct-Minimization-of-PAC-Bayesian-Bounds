@@ -158,14 +158,14 @@ def optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, max_iter=1000, 
         lamb_tensor = torch.empty(1).to(device).requires_grad_()
         # Apply the uniform distribution
         torch.nn.init.uniform_(lamb_tensor, 0.0001, 1.9999)
-        lamb1 = torch.nn.Parameter(lamb_tensor)
+        lamb = torch.nn.Parameter(lamb_tensor)
         
         gamma_tensor = torch.empty(1).to(device).requires_grad_()
         # Apply the uniform distribution
         torch.nn.init.uniform_(gamma_tensor, 0.0001)
         gamma = torch.nn.Parameter(gamma_tensor)
         
-        all_parameters = list(posterior_Qv) + [posterior_rho, lamb1, gamma]
+        all_parameters = list(posterior_Qv) + [posterior_rho, lamb, gamma]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
