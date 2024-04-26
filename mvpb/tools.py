@@ -24,7 +24,7 @@ import numpy as np
 from scipy.special import gammaln
 from scipy import optimize
 
-from ..util import kl
+from .util import kl
 
 def validate_inputs(empirical_gibbs_risk, empirical_disagreement=None, m=None, KLQP=None, delta=0.05):
     """
@@ -87,3 +87,15 @@ def solve_kl_sup(q, right_hand_side):
     else:
         return optimize.brentq(f, q, 1.0-1e-11)
 
+def solve_kl_inf(q, right_hand_side):
+    """
+    find x such that:
+        kl( q || x ) = right_hand_side
+        x < q
+    """
+    f = lambda x: KL_binomial(q, x) - right_hand_side
+
+    if f(1e-9) <= 0.0:
+        return 1e-9
+    else:
+        return optimize.brentq(f, 1e-11, q)

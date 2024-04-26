@@ -24,7 +24,7 @@ by Germain, Lacasse, Laviolette, Marchand and Roy (JMLR 2015)
 http://graal.ift.ulaval.ca/majorityvote/
 """
 
-from .tools import validate_inputs, solve_kl_sup
+from mvpb.tools import validate_inputs, solve_kl_sup
 from math import log, sqrt
 
 def PBkl(empirical_gibbs_risk, m, KL_qp, delta=0.05):

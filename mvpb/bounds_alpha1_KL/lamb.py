@@ -12,75 +12,58 @@ from math import ceil, log, sqrt, exp
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+from ..cocob_optim import COCOB
+
+from mvpb.tools import solve_kl_sup
 from mvpb.util import kl, uniform_distribution
 
+def PBkl(empirical_gibbs_risk, m, KL_QP, delta=0.05):
+    """ PAC Bound ZERO of Germain, Lacasse, Laviolette, Marchand and Roy (JMLR 2015)
 
-# PAC-Bayes-Lambda-bound:
-def lamb(emp_risk, n, KL_QP, delta=0.05):
+    Compute a PAC-Bayesian upper bound on the Bayes risk by
+    multiplying by two an upper bound on the Gibbs risk
+
+    empirical_gibbs_risk : Gibbs risk on the training set
+    m : number of training examples
+    KL_qp : Kullback-Leibler divergence between prior and posterior
+    delta : confidence parameter (default=0.05)
     """
-    Calculate the value of lambda and the corresponding bound.
+    # Don't validate - gibbs_risk may be > 0.5 in non-binary case 
+    #if not validate_inputs(empirical_gibbs_risk, None, m, KL_qp, delta): return 1.0
 
-    Parameters:
-    - emp_risk (float): The empirical risk.
-    - n (int): The number of samples.
-    - KL_QP (float): The Kullback-Leibler divergence between the prior and posterior distributions.
-    - delta (float, optional): The confidence level. Default is 0.05.
+    xi_m = 2*sqrt(m)
+    right_hand_side = ( KL_QP + log( xi_m / delta ) ) / m
+    sup_R = min(1.0, solve_kl_sup(empirical_gibbs_risk, right_hand_side))
 
-    Returns:
-    - float: The minimum of 1.0 and 2.0 times the calculated bound.
+    return 2 * sup_R
 
+def PBkl_MV(empirical_gibbs_risk, m, KL_qp, KL_rhopi, delta=0.05):
+    """ Multi view PAC Bound ZERO
     """
-    n = float(n)
 
-    lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_QP+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-    bound = emp_risk / (1.0 - lamb/2.0) + (KL_QP + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
+    xi_m = 2*sqrt(m)
+    right_hand_side = ( KL_qp + KL_rhopi + log( xi_m / delta ) ) / m
+    sup_R = min(1.0, solve_kl_sup(empirical_gibbs_risk, right_hand_side))
 
-    return min(1.0,2.0*bound)
+    return 2 * sup_R
 
-# MV-PAC-Bayes-Lambda-bound:
-def mv_lamb(emp_mv_risk, n, KL_QP, KL_rhopi, delta=0.05, lamb=None):
-    """
-    Calculate the value of lambda and the corresponding multiview bound.
-
-    Parameters:
-    - emp_risk (float): The weighted sum of the empirical risk of each view.
-    - n (int): The number of samples.
-    - KL_QP (float): the weighted sum of the Kullback-Leibler divergences between the prior and posterior distributions of each view.
-    - KL_rhopi (float): The Kullback-Leibler divergence between the hyper-prior and hyper-posterior distributions.
-    - delta (float, optional): The confidence level. Default is 0.05.
-
-    Returns:
-    - float: The calculated PB-lambda bound.
-
-    """
-    n = float(n)
-
-    if lamb is None:
-        lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_QP+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-    else:
-        lamb = lamb.data.item()
-    bound = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-
-    return min(1.0,2.0*bound)
-
-def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None):
+def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None):
     """
     Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 2.
 
     Args:
-        emp_risks_views (list): A list of empirical risks for each view.
-        posterior_Qv (list): A list of posterior distributions for each view.
-        posterior_rho (tensor): The hyper-posterior distribution for the weights.
-        prior_Pv (list): A list of prior distributions for each view.
-        prior_pi (tensor): The hyper-prior distribution for the weights.
-        n (int): The number of samples.
-        delta (float): The confidence parameter.
-        lamb (float): lambda.
+        - emp_risks_views (list): A list of empirical risks for each view.
+        - posterior_Qv (list): A list of posterior distributions for each view.
+        - posterior_rho (tensor): The hyper-posterior distribution for the weights.
+        - prior_Pv (list): A list of prior distributions for each view.
+        - prior_pi (tensor): The hyper-prior distribution for the weights.
+        - n (int): The number of samples.
+        - delta (float): The confidence parameter.
+        - lamb (float): lambda.
 
     Returns:
-        tensor: The computed loss value.
+        - tensor: The computed loss value.
 
     """
     
@@ -104,18 +87,18 @@ def compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_p
     return loss
 
 
-def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
+def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
     Args:
-        emp_risks_views (list): A list of empirical risks for each view.
-        n (list): The number of samples.
-        delta (float, optional): The confidence level. Default is 0.05.
-        eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
+        - emp_risks_views (list): A list of empirical risks for each view.
+        - n (list): The number of samples.
+        - delta (float, optional): The confidence level. Default is 0.05.
+        - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
 
     Returns:
-        tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
+        - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
     """
     
     m = len(emp_risks_views[0])
@@ -146,7 +129,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
         
-    optimizer = optim.SGD(all_parameters, lr=0.05,momentum=0.9)
+    optimizer = COCOB(all_parameters)
 
     prev_loss = float('inf')
 
@@ -155,7 +138,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
+        loss = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb)
     
         loss.backward() # Backpropagation
     
@@ -170,7 +153,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
             break
     
         prev_loss = loss.item()  # Update the previous loss with the current loss
-        # Optionnel: Afficher la perte pour le suivi
+        # Optional: Display the loss for monitoring
         # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
     # After the optimization
@@ -180,207 +163,106 @@ def optimizeLamb_mv_torch(emp_risks_views, n, max_iter=1000, delta=0.05, eps=10*
     return softmax_posterior_Qv, softmax_posterior_rho, lamb
 
 
-# Optimize PAC-Bayes-Lambda-bound:
-def optimizeLamb(emp_risks, n, delta=0.05, eps=10**-9, abc_pi=None):
+
+def compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb=None, gamma=None):
+    """
+     Compute the loss function for the Majority Vote Learning algorithm.
+
+     Args:
+        - emp_risks (float): The empirical risk for a view.
+        - posterior_Q (torch.nn.Parameter): The posterior distribution for a view.
+        - prior_P (torch.nn.Parameter): The prior distributions for a view.
+        - n (int): The number of samples for the risk.
+        - delta (float): The confidence parameter.
+        - lamb (float): lambda.
+
+    Returns:
+        - tensor: The computed loss value.
+
+     """
+    # Apply softmax to ensure that the weights are probability distributions
+    softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
+    
+    # Compute the empirical risk
+    emp_risk = torch.sum(emp_risks * softmax_posterior_Q)
+
+    # Compute the Kullback-Leibler divergence
+    KL_QP = kl(softmax_posterior_Q, prior_P)
+    
+    if lamb is None or gamma is None:
+        lamb = 2.0 / (torch.sqrt((2.0 * n * emp_risk) / (KL_QP + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+
+    loss = emp_risk / (1.0 - lamb / 2.0) + (KL_QP +  torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
+    
+    return loss
+
+
+def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
+    """
+    Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
+
+    Args:
+        - emp_risks (float): The empirical risk for a view.
+        - n (int): The number of samples for the risk.
+        - delta (float, optional): The confidence level. Default is 0.05.
+        - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
+
+    Returns:
+        - tuple: A tuple containing the optimized posterior distribution for a view (posterior_Q).
+    """
+    
     m = len(emp_risks)
-    n = float(n)
-    prior  = uniform_distribution(m) if abc_pi is None else np.copy(abc_pi)
-    posterior = uniform_distribution(m) if abc_pi is None else np.copy(abc_pi)
-    KL_QP = kl(posterior,prior)
-
-    lamb = 1.0
-    emp_risk = np.average(emp_risks, weights=posterior)
-
-    upd = emp_risk / (1.0 - lamb/2.0) + (KL_QP + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-    bound = upd+2*eps
-
-    while bound-upd > eps:
-        bound = upd
-        lamb = 2.0 / (sqrt((2.0*n*emp_risk)/(KL_QP+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-        for h in range(m):
-            posterior[h] = prior[h]*exp(-lamb*n*emp_risks[h])
-        posterior /= np.sum(posterior)
-
-        emp_risk = np.average(emp_risks, weights=posterior)
-        KL_QP = kl(posterior,prior)
-
-        upd = emp_risk / (1.0 - lamb/2.0) + (KL_QP + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n) 
-    return bound, posterior, lamb, KL_QP, emp_risk
-
-
-# Optimize PAC-Bayes-Multi-View-Lambda-bound:
-def optimizeLamb_mv(emp_risks, KL_qps, n, delta=0.05, eps=10**-9):
-    v = len(KL_qps)
-    # emp_risks  = np.array([0.10602932, 0.1056597 , 0.10573632, 0.10610876])
-    # print(f"{emp_risks=}")
-    n = float(n)
-    pi  = uniform_distribution(v)
-    rho = uniform_distribution(v)
-    KL_rhopi = kl(rho,pi) #KL of hyper distributions
-    KL_QP = np.average(KL_qps, weights=rho)
     
-    lamb = 1.0
-    # print(f"{rho=}")
-    emp_mv_risk = np.average(emp_risks, weights=rho, axis=0)
-    # print(f"{emp_mv_risk=}")
-    upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-    bound = upd+2*eps
-
-    while bound-upd > eps:
-        # print(f"{upd=}\n {rho=}\n {emp_mv_risk}")
-        bound = upd
-        lamb = 2.0 / (sqrt((2.0*n*emp_mv_risk)/(KL_QP+KL_rhopi+log(2.0*sqrt(n)/delta)) + 1.0) + 1.0)
-        for h in range(v):
-            rho[h] = pi[h]*exp(-lamb*n*emp_risks[h])
-        rho /= np.sum(rho)
-
-        emp_mv_risk = np.average(emp_risks, weights=rho, axis=0)
-        KL_rhopi = kl(rho,pi)
-        KL_QP = np.average(KL_qps, weights=rho)
-        
-        upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-    return bound, rho, lamb, KL_rhopi, emp_mv_risk
-
-# def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9,lambda_sum = 1,lambda_l2 = 0):
-#     m = len(emp_risks_views[0])
-#     v = len(emp_risks_views)
-#     n = torch.tensor(np.min(ns_min_values))
-#     print(emp_risks_views)
-#     # Initialisation des distributions
-#     prior_Pv = [uniform_distribution(m) for k in range(v)]
-#     posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
-
-#     prior_pi = uniform_distribution(v)
-#     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
+    # Initialisation with the uniform distribution
+    prior_P = uniform_distribution(m).to(device)
+    posterior_Q = torch.nn.Parameter(prior_P.clone(), requires_grad=True).to(device)
+    # We don't need to compute the gradients for the  hyper-prior too
+    prior_P.requires_grad = False
     
-#     lamb = 1.0
-#     # print(f"{rho=}")`
-#     emp_risks = [torch.sum(view * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-#     emp_mv_risk = torch.sum(torch.stack(emp_risks)*posterior_rho)
-#     # print(f"{emp_mv_risk=}")
-#     KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-
-#     KL_rhopi = kl(posterior_rho,prior_pi)
-
-#     upd = emp_mv_risk / (1.0 - lamb/2.0) + (KL_QP + KL_rhopi + log((2.0*sqrt(n))/delta))/(lamb*(1.0-lamb/2.0)*n)
-#     bound = upd+2*eps
-#     print("Bound:", bound)
-#     print("Upd:", upd)
-#     print("Différence:", bound - upd)
+    # Convert the empirical risks and disagreements to tensors
+    emp_risks = torch.tensor(emp_risks).to(device)
     
-#     all_parameters = list(posterior_Qv) + [posterior_rho]
-#     optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
+    lamb = None
+    if optimise_lambda:
+        # Initialisation of lambda with a random value between 0 and 2 (exclusive)
+        lamb_tensor = torch.empty(1).to(device).requires_grad_()
+        # Apply the uniform distribution
+        torch.nn.init.uniform_(lamb_tensor, 0.0001, 1.9999)
+        lamb = torch.nn.Parameter(lamb_tensor)
+        
+        all_parameters = [posterior_Q, lamb]
+    else:
+        all_parameters = [posterior_Q]
+        
+    # Optimizer
+    optimizer = COCOB(all_parameters)
 
+    prev_loss = float('inf')
+    # Optimisation loop
+    for i in range(max_iter):
+        optimizer.zero_grad()
     
-#     for i in range(100):
-        
-        
-#         optimizer.zero_grad()
-#         # print('test',F.softmax(posterior_Qv[0], dim=0))
-#         print(posterior_Qv[0])
-#         print(posterior_rho)
-#         # Recalculer emp_risks, emp_mv_risk, KL_QP, KL_rhopi à partir des valeurs actuelles de posterior_Qv et posterior_rho
-#         emp_risks = [torch.sum(view * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-#         emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
-#         KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-#         KL_rhopi = kl(posterior_rho, prior_pi)
-#         # l2_penalty = torch.sum(torch.stack([torch.norm(q, p=2) for q in posterior_Qv]))
-#         # sum_penalty = torch.sum(torch.stack([(q.sum() - 1)**2 for q in posterior_Qv]))
-        
-#         # Recalculer upd et bound en utilisant les nouvelles valeurs de emp_mv_risk, KL_QP, KL_rhopi
-#         upd = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-#         # upd += lambda_l2*l2_penalty 
-        
-#         # Mise à jour de lamb si nécessaire
-#         lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
-#         # Nouveau calcul de bound pour la condition de la boucle
-#         bound = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-#         # l2_penalty = torch.sum(torch.stack([torch.norm(q, p=2) for q in posterior_Qv]))
-#         # sum_penalty = torch.sum(torch.stack([(q.sum() - 1)**2 for q in posterior_Qv]))
-        
-#         # bound += lambda_l2*l2_penalty
-
-#         # Rétropropagation et mise à jour des paramètres
-#         bound.backward()
-#         optimizer.step()
-#         with torch.no_grad():
-#             for q in posterior_Qv:
-#                 q.clamp_(1/(m*10),1-1/(m*10))
-#                 q.div_(torch.norm(F.relu(q), p=1))
-#                 # q[:] = F.softmax(q, dim=0)
-                
-                
-#             posterior_rho.clamp_(1/(v*10),1-1/(v*10))
-#             posterior_rho.div_(torch.norm(F.relu(posterior_rho), p=1))
-#             # posterior_rho[:] = F.softmax(posterior_rho, dim=0)
-            
-#         # Condition de sortie
-#         # if torch.abs(bound - upd) <= eps:
-#         #     break                
-            
+        # Calculating the loss
+        loss = compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb)
     
-#     # print("Bound après mise à jour:", bound)
-#     # print("Upd après mise à jour:", upd)
-#     # print("Différence:", abs(bound - upd))
-        
-#     # posterior_Qv = [F.softmax(param, dim=0) for param in posterior_Qv]
-#     # posterior_rho = F.softmax(posterior_rho, dim=0)
-
-
-#     return posterior_Qv, posterior_rhov
-
-
-#######################################
-
-# def optimizeLamb_mv_torch(emp_risks_views, ns_min_values, delta=0.05, eps=10**-9, lambda_sum=1, lambda_l2=0):
-#     m = len(emp_risks_views[0])
-#     v = len(emp_risks_views)
-#     n = torch.tensor(np.min(ns_min_values), dtype=torch.float64)
+        loss.backward() # Backpropagation
     
-#     # Initialisation des distributions
-#     prior_Pv = [uniform_distribution(m) for k in range(v)]
-#     posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True) for k in range(v)])
-#     prior_pi = uniform_distribution(v)
-#     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True)
-#     emp_risks = [torch.sum(torch.tensor(view, dtype=torch.float64) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-#     emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
-#     KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-#     KL_rhopi = kl(posterior_rho, prior_pi)
+        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        optimizer.step() # Update the parameters
+        if optimise_lambda:
+            # Clamping the values of lambda
+            lamb.data = lamb.data.clamp(0.0001, 1.9999)
+        # Verify the convergence criteria of the loss
+        if torch.abs(prev_loss - loss).item() <= eps:
+            print(f"\t Convergence reached after {i} iterations")
+            break
     
-#     # Regroupement de tous les paramètres pour l'optimiseur
-#     all_parameters = list(posterior_Qv) + [posterior_rho]
-#     optimizer = optim.LBFGS(all_parameters, lr=0.1,max_iter=1)
+        prev_loss = loss.item()  # Update the previous loss with the current loss
+        # Optional: Display the loss for monitoring
+        # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
-
-#     def closure():
-#         optimizer.zero_grad()
-#         print(posterior_Qv[0])
-#         print(posterior_rho)
-#         # Votre calcul de la fonction de perte ici...
-#         emp_risks = [torch.sum(torch.tensor(view, dtype=torch.float64) * posterior_Qv[i]) for i, view in enumerate(emp_risks_views)]
-#         emp_mv_risk = torch.sum(torch.stack(emp_risks) * posterior_rho)
-#         KL_QP = torch.sum(torch.stack([kl(posterior_Qv[k], prior_Pv[k]) * posterior_rho for k in range(v)]))
-#         KL_rhopi = kl(posterior_rho, prior_pi)
-#         # Mise à jour de lamb si nécessaire
-#         lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
-#         bound = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-        
-#         # Rétropropagation
-#         bound.backward()
-#         return bound
-
-#     for i in range(100):
-#         # Optimisation avec LBFGS
-#         optimizer.step(closure)
-        
-#         with torch.no_grad():
-#             # Application de softmax pour s'assurer que les poids sont des distributions de probabilités
-#             for k, q in enumerate(posterior_Qv):
-#                 print("Avant normalisation et clampage:", q)
-#                 posterior_Qv[k] = torch.nn.Parameter(torch.softmax(q, dim=0))
-#                 print("Après normalisation et clampage:", q)
-            
-#             posterior_rho.data = torch.softmax(posterior_rho, dim=0)  
-
-#     return posterior_Qv, posterior_rho
-
+    # After the optimization: Apply the softmax to the posterior distribution 
+    # to ensure that the weights are probability distributions
+    with torch.no_grad():
+        softmax_posterior_Q = torch.softmax(posterior_Q, dim=0)
+    return softmax_posterior_Q, lamb
