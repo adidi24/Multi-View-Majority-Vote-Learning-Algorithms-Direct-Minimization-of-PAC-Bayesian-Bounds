@@ -23,7 +23,7 @@ def TND(tandem_risk, n, KL_QP, delta=0.05):
 
 # Implementation of MV_TND
 def TND_MV(tandem_risk, n, KL_QP, KL_rhopi, delta=0.05):
-    rhs   = ( 2.0*(KL_QP + KL_rhopi + log(2.0*sqrt(n)/delta)) ) / n
+    rhs   = ( 2.0*(KL_QP + KL_rhopi) + log(2.0*sqrt(n)/delta))  / n
     ub_tr = min(0.25, solve_kl_sup(tandem_risk, rhs))
     return 4*ub_tr
 
@@ -60,9 +60,9 @@ def compute_mv_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_
     if lamb is None:
         lamb = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
     
-    loss = emp_mv_tnd / (1.0 - lamb / 2.0) + 2*(KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
+    loss = emp_mv_tnd / (1.0 - lamb / 2.0) + 2*(KL_QP + KL_rhopi) + torch.log((2.0 * torch.sqrt(n)) / delta) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return loss
+    return 4.0*loss
 
 
 def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
@@ -79,7 +79,7 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
     """
     
-    m = len(emp_tnd_views[0])
+    m = len(emp_tnd_views[0, 0])
     v = len(emp_tnd_views)
     
     # Initialisation with the uniform distribution
@@ -105,7 +105,7 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
         all_parameters = list(posterior_Qv) + [posterior_rho, lamb]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
-    optimizer = optim.SGD(all_parameters, lr=0.01,momentum=0.9)
+    optimizer = COCOB(all_parameters)
 
     prev_loss = float('inf')
 
@@ -119,7 +119,7 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
         loss.backward() # Backpropagation
 
 
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda:
             lamb.data = lamb.data.clamp(0.0001, 1.9999)
@@ -223,7 +223,7 @@ def optimizeTND_torch(emp_tnd, n, device, max_iter=1000, delta=0.05, eps=10**-9,
     
         loss.backward() # Backpropagation
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda:
             # Clamping the values of lambda

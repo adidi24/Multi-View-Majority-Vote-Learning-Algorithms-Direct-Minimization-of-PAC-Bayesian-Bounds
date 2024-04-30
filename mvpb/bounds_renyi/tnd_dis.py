@@ -20,17 +20,18 @@ def TND_DIS(tandem_risk, disagreement, nt, nd, RD_QP, delta=0.05):
     t_ub  = min(1.0, solve_kl_sup(tandem_risk, t_rhs))
     
     d_rhs = ( 2.0*RD_QP + log(4.0*sqrt(nd)/delta) ) / nd
-    d_lb  = solve_kl_inf(disagreement, d_rhs)
+    d_lb  = solve_kl_sup(disagreement, d_rhs)
     return min(1.0, 2*t_ub + d_lb)
 
 # Implementation of DIS
 def TND_DIS_MV(tandem_risk, disagreement, nt, nd, RD_QP, RD_rhopi, delta=0.05):
-    t_rhs = ( 2.0*(RD_QP +  RD_rhopi + log(4.0*sqrt(nt)/delta)) ) / nt
+    t_rhs = ( 2.0*(RD_QP +  RD_rhopi)+ log(4.0*sqrt(nt)/delta) ) / nt
     t_ub  = min(1.0, solve_kl_sup(tandem_risk, t_rhs))
     
-    d_rhs = ( 2.0*(RD_QP + RD_rhopi + log(4.0*sqrt(nd)/delta)) ) / nd
-    d_lb  = solve_kl_inf(disagreement, d_rhs)
-    return min(1.0, 2*t_ub +  d_lb)
+    d_rhs = ( 2.0*(RD_QP + RD_rhopi) + log(4.0*sqrt(nd)/delta) ) / nd
+    d_ub  = solve_kl_sup(disagreement, d_rhs)
+    # print(f"{tandem_risk=}, {disagreement=}, {RD_QP=}, {RD_rhopi=}, {t_ub=}, {d_ub=}")
+    return min(1.0, 2*t_ub +  d_ub)
 
 def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, nt, nd, delta, lamb1=None, lamb2=None, alpha=1.1):
     """
@@ -74,10 +75,10 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
         lamb1 = 2.0 / (torch.sqrt((1.0 * nt * emp_mv_tnd) / (RD_QP + RD_rhopi + torch.log(2.0 * torch.sqrt(nt) / delta)) + 1.0) + 1.0)
         lamb2 = 2.0 / (torch.sqrt((1.0 * nd * emp_mv_dis) / (RD_QP + RD_rhopi + torch.log(2.0 * torch.sqrt(nd) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(RD_QP + RD_rhopi + torch.log((2.0 * torch.sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
-    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(RD_QP + RD_rhopi + torch.log((2.0 * torch.sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
+    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
-    loss = loss_term1 + loss_term2/2.0
+    loss = 2.0*loss_term1 + loss_term2
     
     return loss
 
@@ -100,7 +101,7 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_i
     """
     
     assert len(emp_tnd_views) == len(emp_dis_views)
-    m = len(emp_tnd_views[0])
+    m = len(emp_tnd_views[0, 0])
     v = len(emp_tnd_views)
     
     # Initialisation with the uniform distribution
@@ -145,7 +146,7 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_i
     
         loss.backward() # Backpropagation
 
-        torch.nn.utils.clip_grad_norm_(all_parameters, 5.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 5.0)
         optimizer.step() # Update the parameters
         
         if optimise_lambdas:
@@ -207,7 +208,7 @@ def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=No
     loss_term1 = emp_tandem / (1.0 - lamb1 / 2.0) + 2*RD_QP + torch.log((2.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
     loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*RD_QP + torch.log((2.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
-    loss = loss_term1 + loss_term2/2.0
+    loss = 2.0*loss_term1 + loss_term2
     
     return loss
 
@@ -271,7 +272,7 @@ def optimizeTND_DIS_torch(emp_tnd, emp_dis, nt, nd, device, max_iter=1000, delta
     
         loss.backward() # Backpropagation
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambdas:
             # Clamping the values of lambdas

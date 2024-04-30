@@ -39,6 +39,7 @@ def train_test_split(Xs, labels, test_size=0.2, random_state=42):
 class Nhanes():
     
     def __init__(self):
+        self.split = True
         self._name = "NHANES"
         self.datasets = {'df': None, 'exam': None, 'lab': None, 'quest': None}
         self.file = '/data/NHANES/'
@@ -136,32 +137,57 @@ class Nhanes():
                 return Xs_train, y_train, Xs_test, y_test
 
 class MultipleFeatures:
-    def __init__(self, dataset_path = os.getcwd()+'/data/mfeat/'):
+    def __init__(self, dataset_path = os.getcwd()+'/data/mfeat', size="large"):
+        self.split = size == "small"
         self._name = "Multiple-Features"
-        self.dataset_path = dataset_path
+        self.sizes = ["small", "large"]
+        self.size = size
+        if size not in self.sizes:
+            raise ValueError(f"size must be one of {self.sizes}")
+        self.dataset_path = dataset_path + f"-{size}/" if size == "large" else dataset_path + "/"
         self.feature_sets = ["mfeat-fou", "mfeat-fac", "mfeat-kar", "mfeat-pix", "mfeat-zer", "mfeat-mor"]
-        self.Xs = []
-        self.y = None
 
-    def load_data(self):
+    def load_large(self):
+        Xs_train, Xs_test = [], []
+        for feature_set in self.feature_sets:
+            for split in ["train", "test"]:
+                csv_path = os.path.join(self.dataset_path, f"{feature_set}-{split}.csv")
+                if os.path.exists(csv_path):
+                    df = pd.read_csv(csv_path)
+                    if split == "train":
+                        Xs_train.append(df.iloc[:, :-1].to_numpy())
+                        y_train = df.iloc[:, -1].to_numpy()
+                    else:
+                        Xs_test.append(df.iloc[:, :-1].to_numpy())
+                        y_test = df.iloc[:, -1].to_numpy()
+                else:
+                    raise FileNotFoundError(f"{feature_set}.csv not found in {self.dataset_path}")
+        return Xs_train, y_train, Xs_test, y_test
+    
+    def load_small(self):
+        Xs = []
         for feature_set in self.feature_sets:
             csv_path = os.path.join(self.dataset_path, f"{feature_set}.csv")
             if os.path.exists(csv_path):
-                view = pd.read_csv(csv_path)
-                self.Xs.append(view.iloc[:, :-1].to_numpy())
-                self.y = view.iloc[:, -1].to_numpy()
+                df = pd.read_csv(csv_path)
+                Xs.append(df.iloc[:, :-1].to_numpy())
+                y = df.iloc[:, -1].to_numpy()
             else:
                 raise FileNotFoundError(f"{feature_set}.csv not found in {self.dataset_path}")
+        return Xs, y
         
 
     def get_data(self, **kwargs):
-        if self.Xs == [] or self.y == None:
-            self.load_data()
-        Xs_train, y_train, Xs_test, y_test = train_test_split(self.Xs, self.y)
+        if self.size == "small":
+            Xs, y = self.load_small()
+            Xs_train, y_train, Xs_test, y_test = train_test_split(Xs, y)
+        else:
+            Xs_train, y_train, Xs_test, y_test = self.load_large()
         return Xs_train, y_train, Xs_test, y_test
     
 class SampleData:
     def __init__(self, dataset_path = os.getcwd()+'/data/sample_data/'):
+        self.split = True
         self._name = "Sample-Data"
         self.dataset_path = dataset_path
         self.views = ['view1', 'view2', 'view3', 'view4']
@@ -192,6 +218,7 @@ class SampleData:
 
 class Nutrimouse:
     def __init__(self, dataset_path = os.getcwd()+'/data/nutrimouse/'):
+        self.split = True
         self._name = "Nutrimouse"
         self.dataset_path = dataset_path
         self.dataset = Bunch()
@@ -225,6 +252,7 @@ class Nutrimouse:
         
 class ALOI:
     def __init__(self, dataset_path = os.getcwd()+'/data/aloi_csv/'):
+        self.split = True
         self._name = "ALOI"
         self.dataset_path = dataset_path
         self.filenames = os.listdir(dataset_path)
@@ -248,6 +276,7 @@ class ALOI:
 
 class IS:
     def __init__(self):
+        self.split = True
         self._name = "Image-Segmentation"
         self.le = LabelEncoder()
 
@@ -270,6 +299,7 @@ class IS:
     
 class CorelImageFeatures:
     def __init__(self, dataset_path = os.getcwd()+'/data/corel_features/'):
+        self.split = True
         self._name = "Corel-Image-Features"
         self.dataset_path = dataset_path
         self.filenames = os.listdir(dataset_path)
@@ -297,6 +327,7 @@ class CorelImageFeatures:
     
 class ReutersEN:
     def __init__(self, sample=1, select_chi2=1000, dataset_path = os.getcwd()+'/data//ReutersEN/reutersEN/'):
+        self.split = True
         self._name = "ReutersEN"
         self.dataset_path = dataset_path
         self.sample = sample
@@ -359,6 +390,7 @@ class ReutersEN:
     
 class MNIST_MV_Datasets:
     def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
+        self.split = True
         self._name = "MNIST-MV"
         self.dataset_path = dataset_path + f"MNIST_{sample}/"
         self.filenames = os.listdir(self.dataset_path)
@@ -394,6 +426,7 @@ class MNIST_MV_Datasets:
 
 class Fash_MNIST_MV_Datasets:
     def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
+        self.split = True
         self._name = "Fashion-MNIST-MV"
         self.dataset_path = dataset_path + f"Fash_MNIST_{sample}/"
         self.filenames = os.listdir(self.dataset_path)
@@ -428,6 +461,7 @@ class Fash_MNIST_MV_Datasets:
     
 class EMNIST_Letters_MV_Datasets:
     def __init__(self, dataset_path = os.getcwd()+'/data/', sample=1):
+        self.split = True
         self._name = "EMNIST-Letters-MV"
         self.dataset_path = dataset_path + f"EMNIST_Letters_{sample}/"
         self.filenames = os.listdir(self.dataset_path)
@@ -461,6 +495,7 @@ class EMNIST_Letters_MV_Datasets:
     
 class NUS_WIDE_OBJECT:
     def __init__(self, dataset_path = os.getcwd()+'/data/NUS-WIDE-OBJECT/', min_pos_samples=1000):
+        self.split = True
         self._name = "NUS-WIDE-OBJECT"
         self.dataset_path = dataset_path
         self.nus_features_files_path = os.listdir(dataset_path+"low level features")
@@ -518,6 +553,7 @@ class NUS_WIDE_OBJECT:
     
 class Mushrooms:
     def __init__(self, dataset_path = os.getcwd()+'/data/Mushroom/'):
+        self.split = True
         self._name = "Mushrooms"
         self.dataset_path = dataset_path
         self.filenames = os.listdir(dataset_path)
@@ -541,6 +577,7 @@ class Mushrooms:
     
 class PTB_XL_plus:
     def __init__(self, dataset_path = os.getcwd()+'/data/PTB-XL-plus/'):
+        self.split = True
         self._name = "PTB-XL+"
         self.dataset_path = dataset_path
         self.filenames = os.listdir(dataset_path)

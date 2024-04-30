@@ -26,7 +26,7 @@ def DIS_MV(gibbs_risk, disagreement, ng, nd, KL_QP, KL_rhopi, delta=0.05):
     g_rhs = ( KL_QP +  KL_rhopi + log(4.0*sqrt(ng)/delta) ) / ng
     g_ub  = min(1.0, solve_kl_sup(gibbs_risk, g_rhs))
     
-    d_rhs = ( 2.0*(KL_QP + KL_rhopi + log(4.0*sqrt(nd)/delta)) ) / nd
+    d_rhs = ( 2.0*(KL_QP + KL_rhopi) + log(4.0*sqrt(nd)/delta)) / nd
     d_lb  = solve_kl_inf(disagreement, d_rhs)
     return min(1.0, 4*g_ub - 2*d_lb)
 
@@ -71,9 +71,9 @@ def compute_mv_loss(emp_risks_views, emp_dis_views, posterior_Qv, posterior_rho,
         gamma = torch.sqrt(2.0 * (KL_QP + KL_rhopi + torch.log((4.0*torch.sqrt(nd))/delta)) / (emp_mv_dis*nd))
     
     phi = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((4.0 * torch.sqrt(ng)) / delta)) / (lamb * (1.0 - lamb / 2.0) * ng)
-    dis_term = (1-gamma/2.0) * emp_mv_dis - 2*(KL_QP + KL_rhopi + torch.log((4.0 * torch.sqrt(nd)) / delta)) / (gamma*nd)
+    dis_term = (1-gamma/2.0) * emp_mv_dis - 2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta) / (gamma*nd)
 
-    loss = 2.0*phi - dis_term
+    loss = 4.0*phi - 2.0*dis_term
     
     return loss
 
@@ -95,8 +95,8 @@ def optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, device, max_ite
     """
     
     assert len(emp_risks_views) == len(emp_dis_views)
-    m = len(emp_dis_views[0])
-    v = len(emp_dis_views)
+    m = len(emp_risks_views[0])
+    v = len(emp_risks_views)
     
     # Initialisation with the uniform distribution
     prior_Pv = [uniform_distribution(m).to(device)]*v
@@ -144,7 +144,7 @@ def optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, device, max_ite
     
         loss.backward() # Backpropagation
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda_gamma:
             # Clamping the values of lambda and gamma
@@ -204,7 +204,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, lamb=N
     phi = emp_risk / (1.0 - lamb / 2.0) + KL_QP + torch.log((4.0 * torch.sqrt(ng)) / delta) / (lamb * (1.0 - lamb / 2.0) * ng)
     dis_term = (1-gamma/2.0) * emp_disagreement - (2*KL_QP + torch.log((4.0 * torch.sqrt(nd)) / delta)) / (gamma*nd)
 
-    loss = 2.0*phi - dis_term
+    loss = 4.0*phi - 2.0*dis_term
     
     return loss
 
@@ -267,7 +267,7 @@ def optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0
     
         loss.backward() # Backpropagation
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda_gamma:
             # Clamping the values of lambda and gamma

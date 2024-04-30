@@ -84,7 +84,7 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
 
     loss = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return loss
+    return 2.0*loss
 
 
 def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
@@ -143,7 +143,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
         loss.backward() # Backpropagation
     
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda:
             lamb.data = lamb.data.clamp(0.0001, 1.9999)
@@ -194,7 +194,7 @@ def compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb=None, gamma=Non
 
     loss = emp_risk / (1.0 - lamb / 2.0) + (KL_QP +  torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return loss
+    return 2.0*loss
 
 
 def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False):
@@ -247,7 +247,7 @@ def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**
     
         loss.backward() # Backpropagation
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda:
             # Clamping the values of lambda

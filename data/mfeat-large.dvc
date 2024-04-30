@@ -1,0 +1,6 @@
+outs:
+- md5: f2a6bd6f10f5088c83b7c15059ab9d7c.dir
+  size: 389488979
+  nfiles: 12
+  hash: md5
+  path: mfeat-large

@@ -114,10 +114,10 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
         return (mvtP, util.risk(mvtP, Y)) if Y is not None else mvtP
     
-    def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
+    def  optimize_Q(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
         allowed_bounds = {'Lambda', 'TND_DIS', 'TND', 'DIS'}
         if bound not in allowed_bounds:
-            raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
+            raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
         if labeled_data is None and not incl_oob:
             raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
 
@@ -202,10 +202,10 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             self.gamma_dis = gamma_dis
             return posterior_Q
         else:
-            raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
+            raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
 
     def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, alpha=1.0):
-        if bound not in ['PBkl', 'Lambda', 'TND_DIS', 'TND', 'DIS']:
+        if bound not in ['Uniform', 'Lambda', 'TND_DIS', 'TND', 'DIS']:
             raise Exception("Warning, ViewClassifier.bound: Unknown bound!")
         
         m = self.nb_estimators
@@ -230,8 +230,16 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
                 RD_QP = rd(self.posterior_Q, prior_P, alpha).item()
         
         # print(f"{KL_QP=},  {KL_QP=}")
+        if bound == 'Uniform':
+            emp_risk, n_min = self.gibbs_risk(labeled_data, incl_oob)
             
-        if bound == 'Lambda':
+            # Compute the PB-lambda bound for each view and for the multiview resp.
+            if alpha==1:
+                return (bkl.PBkl(emp_risk, n_min, KL_QP))
+            else:
+                return (br.PBkl(emp_risk, n_min, RD_QP))
+            
+        elif bound == 'Lambda':
             emp_risk, n_min = self.gibbs_risk(labeled_data, incl_oob)
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
@@ -243,6 +251,8 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
         elif bound == 'TND_DIS':
             emp_trisk, nt = self.tandem_risk(labeled_data, incl_oob)
             emp_dis, nd = self.disagreement(ulX, incl_oob)
+            # emp_risk, n_min = self.gibbs_risk(labeled_data, incl_oob)
+            # print(f"{emp_risk=}, {emp_trisk+0.5*emp_dis=}, {emp_trisk=}, {emp_dis=}")
             
             # Compute the TND_DIS bound for each view and for the multiview resp.
             if alpha==1:
@@ -271,12 +281,11 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
         self.posterior_Q = posterior_Q
     
     def clear_posteriors(self):
-        self.posterior_Q = None
+        self.posterior_Q = uniform_distribution(self.nb_estimators)
 
 
     def gibbs_risk(self, labeled_data=None, incl_oob=True):
         risks, ns = self.risks(labeled_data, incl_oob)
-
         posterior_Q = self.posterior_Q.cpu().detach().numpy()
         emp_risk = np.average(risks/ns, weights=posterior_Q, axis=0)
         return emp_risk, np.min(ns)
