@@ -472,3 +472,35 @@ def multiview_tandem_risks(preds, targs):
             if i != j:
                 tandem_risks[j, i, :, :] = tandem_risks[i, j, :, :]
     return tandem_risks
+
+
+class LogBarrierFunction:
+    def __init__(self, t=1.0):
+        """
+        Initialize the LogBarrierFunction with a specified 't' parameter.
+        
+        Parameters:
+        t (float): Controls the steepness and sensitivity of the barrier.
+                   Higher values make the barrier more aggressive.
+        """
+        self.t = t
+
+    def __call__(self, x):
+        """
+        Compute the log-barrier for a given constraint 'x'.
+        
+        Parameters:
+        x (torch.Tensor): The constraint variable which should be a scalar tensor.
+                          Typically, 'x' would be some function of the model's output
+                          that you want to constrain.
+        
+        Returns:
+        torch.Tensor: The value of the log-barrier penalty.
+        """
+        if x <= -1.0 / (self.t ** 2.0):
+            return -(1.0 / self.t) * torch.log(-x)
+        else:
+            # When x is not within the critical region, use a linear approximation to avoid extreme penalties
+            return self.t * x - (1.0 / self.t) * math.log(1 / (self.t ** 2.0)) + (1 / self.t)
+
+

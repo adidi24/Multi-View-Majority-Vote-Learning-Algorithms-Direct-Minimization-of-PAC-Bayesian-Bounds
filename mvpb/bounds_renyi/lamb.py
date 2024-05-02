@@ -18,6 +18,7 @@ from ..cocob_optim import COCOB
 from mvpb.tools import solve_kl_sup
 from mvpb.util import uniform_distribution
 from mvpb.util import renyi_divergence as rd
+from mvpb.util import LogBarrierFunction as lbf
 
 def PBkl(empirical_gibbs_risk, m, RD_QP, delta=0.05):
     """ PAC Bound ZERO of Germain, Lacasse, Laviolette, Marchand and Roy (JMLR 2015)
@@ -86,10 +87,10 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
 
     loss = emp_mv_risk / (1.0 - lamb / 2.0) + (RD_QP + RD_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return 2.0*loss
+    return 2.0*loss, loss
 
 
-def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1):
+def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -103,7 +104,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
     Returns:
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
     """
-    
+    log_barrier = lbf(t)
     m = len(emp_risks_views[0])
     v = len(emp_risks_views)
     
@@ -141,8 +142,8 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
-    
+        loss, constraint = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
+        loss = loss + log_barrier(constraint-0,5)
         loss.backward() # Backpropagation
     
     
@@ -179,6 +180,8 @@ def compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb=None, gamma=Non
         - delta (float): The confidence parameter.
         - lamb (float): lambda.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - t (float, optional): Controls the steepness and sensitivity of the barrier. Higher values make the barrier more aggressive. Default is 100.
+
 
      Returns:
         - tensor: The computed loss value.
