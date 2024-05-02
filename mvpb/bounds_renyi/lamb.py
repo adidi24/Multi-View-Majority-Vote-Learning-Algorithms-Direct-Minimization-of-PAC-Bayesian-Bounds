@@ -100,6 +100,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
         - delta (float, optional): The confidence level. Default is 0.05.
         - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - t (float, optional): Controls the steepness and sensitivity of the barrier. Higher values make the barrier more aggressive. Default is 100.
 
     Returns:
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
@@ -180,7 +181,6 @@ def compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb=None, gamma=Non
         - delta (float): The confidence parameter.
         - lamb (float): lambda.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
-        - t (float, optional): Controls the steepness and sensitivity of the barrier. Higher values make the barrier more aggressive. Default is 100.
 
 
      Returns:

@@ -14,6 +14,7 @@ from ..cocob_optim import COCOB
 from mvpb.tools import solve_kl_inf, solve_kl_sup
 from mvpb.util import uniform_distribution
 from mvpb.util import renyi_divergence as rd
+from mvpb.util import LogBarrierFunction as lbf
 
 def TND_DIS(tandem_risk, disagreement, nt, nd, RD_QP, delta=0.05):
     t_rhs = ( 2.0*RD_QP + log(4.0*sqrt(nt)/delta) ) / nt
@@ -50,6 +51,7 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
         - lamb (float): lambda.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
 
+
      Returns:
         - tensor: The computed loss value.
 
@@ -78,12 +80,12 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
     loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
     loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
-    loss = 2.0*loss_term1 + loss_term2
+    loss = 2.0*loss_term1 + loss_term2, loss_term1, loss_term2
     
     return loss
 
 
-def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1.1):
+def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1.1,t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -95,11 +97,13 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_i
         - delta (float, optional): The confidence level. Default is 0.05.
         - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - t (float, optional): Controls the steepness and sensitivity of the barrier. Higher values make the barrier more aggressive. Default is 100.
+
 
     Returns:
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
     """
-    
+    log_barrier = lbf(t)
     assert len(emp_tnd_views) == len(emp_dis_views)
     m = len(emp_tnd_views[0, 0])
     v = len(emp_tnd_views)
@@ -142,9 +146,10 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_i
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, nt, nd, delta, lamb1, lamb2, alpha)
-    
+        loss, constraint_joint_error, constraint_disagreement = compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, nt, nd, delta, lamb1, lamb2, alpha)
+        loss += log_barrier(constraint_joint_error-0.25) + log_barrier(constraint_disagreement-(2*(torch.sqrt(constraint_joint_error)-constraint_joint_error)))
         loss.backward() # Backpropagation
+
 
         # torch.nn.utils.clip_grad_norm_(all_parameters, 5.0)
         optimizer.step() # Update the parameters
@@ -170,7 +175,7 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_i
 
 
 
-def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=None, lamb2=None, alpha=1.1):
+def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=None, lamb2=None, alpha=1.1,t=100):
     """
      Compute the loss function for the Majority Vote Learning algorithm.
 
@@ -189,6 +194,8 @@ def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=No
         - tensor: The computed loss value.
 
      """
+    
+
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
     
