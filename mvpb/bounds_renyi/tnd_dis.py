@@ -56,18 +56,30 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
         - tensor: The computed loss value.
 
      """
+    nb_views = len(emp_tnd_views)
+    
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical tandem risk
-    emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
-    emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
+    emp_tnd_v = torch.zeros((nb_views, nb_views))
+    for i in range(nb_views):
+        for j in range(nb_views):
+            emp_tnd_v[i, j] = torch.sum(torch.sum(emp_tnd_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)
+    emp_mv_tnd =  torch.sum(torch.sum(emp_tnd_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho, dim=0)
+    # emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
+    # emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
     
     # Compute the empirical disagreement
-    emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
-    emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
-
+    emp_dis_v = torch.zeros((nb_views, nb_views))
+    for i in range(nb_views):
+        for j in range(nb_views):
+            emp_dis_v[i, j] = torch.sum(torch.sum(emp_dis_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)
+    emp_mv_dis =  torch.sum(torch.sum(emp_dis_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho, dim=0)
+    # emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
+    # emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
+    # print(f"{emp_mv_dis.item()=}, {emp_mv_tnd.item()=}")
 
     # Compute the Rényi divergences
     RD_QP = torch.sum(torch.stack([rd(q, p,  alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
@@ -77,15 +89,15 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
         lamb1 = 2.0 / (torch.sqrt((1.0 * nt * emp_mv_tnd) / (RD_QP + RD_rhopi + torch.log(2.0 * torch.sqrt(nt) / delta)) + 1.0) + 1.0)
         lamb2 = 2.0 / (torch.sqrt((1.0 * nd * emp_mv_dis) / (RD_QP + RD_rhopi + torch.log(2.0 * torch.sqrt(nd) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
-    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
+    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + (2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + (2*(RD_QP + RD_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     loss = 2.0*loss_term1 + loss_term2, loss_term1, loss_term2
     
     return loss
 
 
-def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1.1,t=100):
+def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1.1,t=1):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -118,8 +130,8 @@ def optimizeTND_DIS_mv_torch(emp_tnd_views, emp_dis_views, nt, nd, device, max_i
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
     prior_pi.requires_grad = False
     
-    emp_tnd_views = torch.tensor(emp_tnd_views).to(device)
-    emp_dis_views = torch.tensor(emp_dis_views).to(device)
+    emp_tnd_views = torch.from_numpy(emp_tnd_views).to(device)
+    emp_dis_views = torch.from_numpy(emp_dis_views).to(device)
     
     lamb1, lamb2 = None, None
     if optimise_lambdas:
@@ -200,11 +212,10 @@ def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=No
     softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
     
     # Compute the empirical risk
-    emp_tandem = torch.sum(torch.sum(emp_tnd * softmax_posterior_Q) * softmax_posterior_Q)
+    emp_tandem = torch.sum(torch.sum(emp_tnd * softmax_posterior_Q, dim=0) * softmax_posterior_Q)
     
     # Compute the empirical disagreement
-    emp_dis = torch.sum(torch.sum(emp_dis * softmax_posterior_Q) * softmax_posterior_Q)
-
+    emp_dis = torch.sum(torch.sum(emp_dis * softmax_posterior_Q, dim=0) * softmax_posterior_Q)
     # Compute the Rényi divergence
     RD_QP = rd(softmax_posterior_Q, prior_P, alpha)
     
@@ -212,8 +223,8 @@ def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=No
         lamb1 = 2.0 / (torch.sqrt((1.0 * nt * emp_tandem) / (RD_QP + torch.log(2.0 * torch.sqrt(nt) / delta)) + 1.0) + 1.0)
         lamb2 = 2.0 / (torch.sqrt((1.0 * nd * emp_dis) / (RD_QP + torch.log(2.0 * torch.sqrt(nd) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_tandem / (1.0 - lamb1 / 2.0) + 2*RD_QP + torch.log((2.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
-    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*RD_QP + torch.log((2.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
+    loss_term1 = emp_tandem / (1.0 - lamb1 / 2.0) + (2*RD_QP + torch.log((2.0 * torch.sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + (2*RD_QP + torch.log((2.0 * torch.sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     loss = 2.0*loss_term1 + loss_term2
     

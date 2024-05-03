@@ -50,6 +50,8 @@ def compute_mv_loss(emp_risks_views, emp_dis_views, posterior_Qv, posterior_rho,
         - tensor: The computed loss value.
 
      """
+    nb_views = len(emp_risks_views)
+     
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
@@ -59,8 +61,13 @@ def compute_mv_loss(emp_risks_views, emp_dis_views, posterior_Qv, posterior_rho,
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
     
     # Compute the empirical disagreement
-    emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
-    emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
+    emp_dis_v = torch.zeros((nb_views, nb_views))
+    for i in range(nb_views):
+        for j in range(nb_views):
+            emp_dis_v[i, j] = torch.sum(torch.sum(emp_dis_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j])
+    emp_mv_dis =  torch.sum(torch.sum(emp_dis_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho)
+    # emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
+    # emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
 
     # Compute the Kullback-Leibler divergences
     KL_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
@@ -71,7 +78,7 @@ def compute_mv_loss(emp_risks_views, emp_dis_views, posterior_Qv, posterior_rho,
         gamma = torch.sqrt(2.0 * (KL_QP + KL_rhopi + torch.log((4.0*torch.sqrt(nd))/delta)) / (emp_mv_dis*nd))
     
     phi = emp_mv_risk / (1.0 - lamb / 2.0) + (KL_QP + KL_rhopi + torch.log((4.0 * torch.sqrt(ng)) / delta)) / (lamb * (1.0 - lamb / 2.0) * ng)
-    dis_term = (1-gamma/2.0) * emp_mv_dis - 2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta) / (gamma*nd)
+    dis_term = (1-gamma/2.0) * emp_mv_dis - (2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta)) / (gamma*nd)
 
     loss = 4.0*phi - 2.0*dis_term
     
@@ -192,7 +199,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, lamb=N
     emp_risk = torch.sum(emp_risks * softmax_posterior_Q)
     
     # Compute the empirical disagreement
-    emp_disagreement = torch.sum(torch.sum(emp_dis * softmax_posterior_Q) * softmax_posterior_Q)
+    emp_disagreement = torch.sum(torch.sum(emp_dis * softmax_posterior_Q, dim=0) * softmax_posterior_Q)
 
     # Compute the Kullback-Leibler divergence
     KL_QP = kl(softmax_posterior_Q, prior_P)
@@ -201,7 +208,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, lamb=N
         lamb = 2.0 / (torch.sqrt((2.0 * ng * emp_risk) / (KL_QP + torch.log(4.0 * torch.sqrt(ng) / delta)) + 1.0) + 1.0)
         gamma = torch.sqrt(2.0 * (KL_QP + torch.log((4.0*torch.sqrt(nd))/delta)) / (emp_disagreement*nd))
     
-    phi = emp_risk / (1.0 - lamb / 2.0) + KL_QP + torch.log((4.0 * torch.sqrt(ng)) / delta) / (lamb * (1.0 - lamb / 2.0) * ng)
+    phi = emp_risk / (1.0 - lamb / 2.0) + (KL_QP + torch.log((4.0 * torch.sqrt(ng)) / delta)) / (lamb * (1.0 - lamb / 2.0) * ng)
     dis_term = (1-gamma/2.0) * emp_disagreement - (2*KL_QP + torch.log((4.0 * torch.sqrt(nd)) / delta)) / (gamma*nd)
 
     loss = 4.0*phi - 2.0*dis_term

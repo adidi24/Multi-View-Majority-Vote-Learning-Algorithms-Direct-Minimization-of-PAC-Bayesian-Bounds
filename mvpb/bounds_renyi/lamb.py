@@ -77,6 +77,7 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
     # Compute the empirical risk
     emp_risks = [torch.sum(view * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
+    # print(f"{emp_mv_risk.item()=}")
 
     # Compute the Rényi divergences
     RD_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
@@ -90,7 +91,7 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
     return 2.0*loss, loss
 
 
-def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=100):
+def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=1):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -120,7 +121,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
     prior_pi.requires_grad = False
     
-    emp_risks_views = torch.tensor(emp_risks_views).to(device)
+    emp_risks_views = torch.from_numpy(emp_risks_views).to(device)
     
     lamb = None
     if optimise_lambda:
@@ -144,7 +145,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
     
         # Calculating the loss
         loss, constraint = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
-        loss = loss + log_barrier(constraint-0,5)
+        loss = loss + log_barrier(constraint-0.5)
         loss.backward() # Backpropagation
     
     

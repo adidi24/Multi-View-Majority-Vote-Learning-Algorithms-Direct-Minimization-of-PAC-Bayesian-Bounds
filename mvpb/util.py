@@ -211,7 +211,6 @@ def MV_preds(rho, qs, preds):
     rho_qs = qs * rho[:, np.newaxis]
     rho_qs = rho_qs.flatten()
     m = rho_qs.shape[0]
-    
     preds = np.concatenate(preds, axis=0)
     
     preds = np.transpose(preds)

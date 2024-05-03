@@ -158,9 +158,9 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             nd = torch.tensor(np.min(ns_d))
 
             if alpha == 1:
-                posterior_Q, lamb1_tnd_dis, lamb2_tnd_dis = bkl.optimizeTND_DIS_torch(emp_trisks, emp_dis, nt, nd, device, optimise_lambdas=optimise_lambda_gamma)
+                posterior_Q, lamb1_tnd_dis, lamb2_tnd_dis = bkl.optimizeTND_DIS_torch(emp_trisks, emp_dis, nt, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma)
             else:
-                posterior_Q, lamb1_tnd_dis, lamb2_tnd_dis = br.optimizeTND_DIS_torch(emp_trisks, emp_dis, nt, nd, device, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
+                posterior_Q, lamb1_tnd_dis, lamb2_tnd_dis = br.optimizeTND_DIS_torch(emp_trisks, emp_dis, nt, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
             
             self.set_posteriors(posterior_Q)
             # print(f"{lamb1_tnd_dis=}, {lamb2_tnd_dis=}")
@@ -174,9 +174,9 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             ns_min = torch.tensor(np.min(ns))
 
             if alpha == 1:
-                posterior_Q, lamb_tnd = bkl.optimizeTND_torch(emp_trisks, ns_min, device, optimise_lambda=optimise_lambda_gamma)
+                posterior_Q, lamb_tnd = bkl.optimizeTND_torch(emp_trisks, ns_min, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma)
             else:
-                posterior_Q, lamb_tnd = br.optimizeTND_torch(emp_trisks, ns_min, device, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+                posterior_Q, lamb_tnd = br.optimizeTND_torch(emp_trisks, ns_min, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_tnd=}")
             self.set_posteriors(posterior_Q)
@@ -192,9 +192,9 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             nd = torch.tensor(np.min(ns_d))
 
             if alpha == 1:
-                posterior_Q, lamb_dis, gamma_dis = bkl.optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, optimise_lambda_gamma=optimise_lambda_gamma)
+                posterior_Q, lamb_dis, gamma_dis = bkl.optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma)
             else:
-                posterior_Q, lamb_dis, gamma_dis = br.optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
+                posterior_Q, lamb_dis, gamma_dis = br.optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_dis=}, {gamma_dis=}")
             self.set_posteriors(posterior_Q)
@@ -235,18 +235,18 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
             if alpha==1:
-                return (bkl.PBkl(emp_risk, n_min, KL_QP))
+                return (bkl.PBkl(emp_risk, n_min, KL_QP)), emp_risk, -1, KL_QP, n_min, -1
             else:
-                return (br.PBkl(emp_risk, n_min, RD_QP))
+                return (br.PBkl(emp_risk, n_min, RD_QP)), emp_risk, -1, RD_QP, n_min, -1
             
         elif bound == 'Lambda':
             emp_risk, n_min = self.gibbs_risk(labeled_data, incl_oob)
             
             # Compute the PB-lambda bound for each view and for the multiview resp.
             if alpha==1:
-                return (bkl.PBkl(emp_risk, n_min, KL_QP))
+                return (bkl.PBkl(emp_risk, n_min, KL_QP)), emp_risk, -1, KL_QP, n_min, -1
             else:
-                return (br.PBkl(emp_risk, n_min, RD_QP))
+                return (br.PBkl(emp_risk, n_min, RD_QP)), emp_risk, -1, RD_QP, n_min, -1
             
         elif bound == 'TND_DIS':
             emp_trisk, nt = self.tandem_risk(labeled_data, incl_oob)
@@ -256,26 +256,26 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             
             # Compute the TND_DIS bound for each view and for the multiview resp.
             if alpha==1:
-                return bkl.TND_DIS(emp_trisk, emp_dis, nt, nd, KL_QP)
+                return bkl.TND_DIS(emp_trisk, emp_dis, nt, nd, KL_QP), emp_trisk, emp_dis, KL_QP, nt, nd
             else:
-                return br.TND_DIS(emp_trisk, emp_dis, nt, nd, RD_QP)
+                return br.TND_DIS(emp_trisk, emp_dis, nt, nd, RD_QP), emp_trisk, emp_dis, RD_QP, nt, nd
         elif bound == 'TND':
             emp_trisk, n_min = self.tandem_risk(labeled_data, incl_oob)
             
             # Compute the TND bound for each view and for the multiview resp.
             if alpha==1:
-                return bkl.TND(emp_trisk, n_min, KL_QP)
+                return bkl.TND(emp_trisk, n_min, KL_QP), emp_trisk, -1, KL_QP, n_min, -1
             else:
-                return br.TND(emp_trisk, n_min, RD_QP)
+                return br.TND(emp_trisk, n_min, RD_QP), emp_trisk, -1, RD_QP, n_min, -1
         elif bound == 'DIS':
             emp_risk, ng = self.gibbs_risk(labeled_data, incl_oob)
             emp_dis, nd = self.disagreement(ulX, incl_oob)
             
             # Compute the DIS bound for each view and for the multiview resp.
             if alpha==1:
-                return bkl.DIS(emp_risk, emp_dis, ng, nd, KL_QP)
+                return bkl.DIS(emp_risk, emp_dis, ng, nd, KL_QP), emp_risk, emp_dis, KL_QP, ng, nd
             else:
-                return br.DIS(emp_risk, emp_dis, ng, nd, RD_QP)
+                return br.DIS(emp_risk, emp_dis, ng, nd, RD_QP), emp_risk, emp_dis, RD_QP, ng, nd
         
     def set_posteriors(self, posterior_Q):
         self.posterior_Q = posterior_Q

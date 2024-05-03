@@ -150,7 +150,7 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         return (mvP, util.risk(mvP, Y)) if Y is not None else mvP
     
     def  optimize_rho(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
-        allowed_bounds = {'Lambda', 'TND_DIS', 'TND', 'DIS'}
+        allowed_bounds = {'Lambda', 'TND_DIS', 'TND', 'DIS', 'KLinv'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
         if labeled_data is None and not incl_oob:
@@ -195,9 +195,9 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             nd = torch.tensor(np.min(ns_views_d))
 
             if alpha == 1:
-                posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = bkl.optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, device, optimise_lambdas=optimise_lambda_gamma)
+                posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = bkl.optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma)
             else:
-                posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = br.optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, device, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
+                posterior_Qv, posterior_rho, lamb1_tnd_dis, lamb2_tnd_dis = br.optimizeTND_DIS_mv_torch(emp_trisks_views, emp_dis_views, nt, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             # print(f"{lamb1_tnd_dis=}, {lamb2_tnd_dis=}")
@@ -211,9 +211,9 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             ns_min = torch.tensor(np.min(ns_views))
 
             if alpha == 1:
-                posterior_Qv, posterior_rho, lamb_tnd = bkl.optimizeTND_mv_torch(emp_trisks_views, ns_min, device, optimise_lambda=optimise_lambda_gamma)
+                posterior_Qv, posterior_rho, lamb_tnd = bkl.optimizeTND_mv_torch(emp_trisks_views, ns_min, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma)
             else:
-                posterior_Qv, posterior_rho, lamb_tnd = br.optimizeTND_mv_torch(emp_trisks_views, ns_min, device, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+                posterior_Qv, posterior_rho, lamb_tnd = br.optimizeTND_mv_torch(emp_trisks_views, ns_min, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_tnd=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -228,20 +228,34 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
             nd = torch.tensor(np.min(ns_views_d))
 
             if alpha == 1:
-                posterior_Qv, posterior_rho, lamb_dis, gamma_dis = bkl.optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, device, optimise_lambda_gamma=optimise_lambda_gamma)
+                posterior_Qv, posterior_rho, lamb_dis, gamma_dis = bkl.optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma)
             else:
-                posterior_Qv, posterior_rho, lamb_dis, gamma_dis = br.optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, device, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
+                posterior_Qv, posterior_rho, lamb_dis, gamma_dis = br.optimizeDIS_mv_torch(emp_risks_views, emp_dis_views, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_dis=}, {gamma_dis=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb_dis = lamb_dis
             self.gamma_dis = gamma_dis
             return posterior_Qv, posterior_rho
+        elif bound == 'KLinv':
+            risks_views, ns_views = self.risks(labeled_data, incl_oob)
+            emp_risks_views = np.divide(risks_views, ns_views, where=ns_views!=0)
+            ns_min = torch.tensor(np.min(ns_views))
+
+            if alpha == 1:
+                # posterior_Qv, posterior_rho, lamb = bkl.optimizeLamb_mv_torch(emp_risks_views, ns_min, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma)
+                raise Exception('Warning, optimize_rho: KLinv not implemented for alpha=1')
+            else:
+                posterior_Qv, posterior_rho = br.optimizeKLinv_mv_torch(emp_risks_views, ns_min, device, max_iter=max_iter, alpha=alpha)
+            
+            # print(f"{lamb=}")
+            self.set_posteriors(posterior_rho, posterior_Qv)
+            return posterior_Qv, posterior_rho
         else:
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
 
     def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, alpha=1.0):
-        if bound not in ['Uniform', 'Lambda', 'TND_DIS', 'TND', 'DIS']:
+        if bound not in ['Uniform', 'Lambda', 'TND_DIS', 'TND', 'DIS', 'KLinv']:
             raise Exception("Warning, ViewClassifier.bound: Unknown bound!")
         
         m = self.nb_estimators
@@ -327,6 +341,16 @@ class MultiViewBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
                 return bkl.DIS_MV(emp_mv_risk, emp_mv_dis, ng, nd, KL_QP.item(), KL_rhopi.item()), emp_mv_risk, emp_mv_dis, KL_QP.item(), KL_rhopi.item(), ng, nd
             else:
                 return br.DIS_MV(emp_mv_risk, emp_mv_dis, ng, nd, RD_QP.item(), RD_rhopi.item()), emp_mv_risk, emp_mv_dis, RD_QP.item(), RD_rhopi.item(), ng, nd
+        elif bound == 'KLinv':
+            emp_risks_views, emp_mv_risk, ns = self.mv_risks(labeled_data, incl_oob)
+            
+            # Compute the PB-lambda bound for each view and for the multiview resp.
+            if alpha==1:
+                # return bkl.PBkl_MV(emp_mv_risk, ns, KL_QP.item(), KL_rhopi.item()), emp_mv_risk, -1, KL_QP.item(), KL_rhopi.item(), ns, -1
+                raise Exception('Warning, bound: KLinv not implemented for alpha=1')
+            else:
+                return br.KLInv_MV(emp_mv_risk, ns, RD_QP.item(), RD_rhopi.item()), emp_mv_risk, -1, RD_QP.item(), RD_rhopi.item(), ns, -1
+            
         
     def set_posteriors(self, posterior_rho, posterior_Qv):
         self.posterior_rho = posterior_rho

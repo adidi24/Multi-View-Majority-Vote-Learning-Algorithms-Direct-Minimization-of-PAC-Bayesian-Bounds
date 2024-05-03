@@ -51,17 +51,30 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
         - tensor: The computed loss value.
 
      """
+    nb_views = len(emp_tnd_views)
+     
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical tandem risk
-    emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
-    emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
+    emp_tnd_v = torch.zeros((nb_views, nb_views))
+    for i in range(nb_views):
+        for j in range(nb_views):
+            print(f"{emp_tnd_views[i, j]=}")
+            emp_tnd_v[i, j] = torch.sum(torch.sum(emp_tnd_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j])
+    emp_mv_tnd =  torch.sum(torch.sum(emp_tnd_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho)
+    # emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
+    # emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
     
     # Compute the empirical disagreement
-    emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
-    emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
+    emp_dis_v = torch.zeros((nb_views, nb_views))
+    for i in range(nb_views):
+        for j in range(nb_views):
+            emp_dis_v[i, j] = torch.sum(torch.sum(emp_dis_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j])
+    emp_mv_dis =  torch.sum(torch.sum(emp_dis_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho)
+    # emp_dis_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_dis_views, softmax_posterior_Qv)]
+    # emp_mv_dis = torch.sum(torch.sum(torch.stack(emp_dis_risks) * softmax_posterior_rho) * softmax_posterior_rho)
 
 
     # Compute the Kullback-Leibler divergences
@@ -72,8 +85,8 @@ def compute_mv_loss(emp_tnd_views, emp_dis_views, posterior_Qv, posterior_rho, p
         lamb1 = 2.0 / (torch.sqrt((1.0 * nt * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(nt) / delta)) + 1.0) + 1.0)
         lamb2 = 2.0 / (torch.sqrt((1.0 * nd * emp_mv_dis) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(nd) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + 2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
-    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + 2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
+    loss_term1 = emp_mv_tnd / (1.0 - lamb1 / 2.0) + (2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_mv_dis / (1.0 - lamb2 / 2.0) + (2*(KL_QP + KL_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     loss = 2.0*loss_term1 + loss_term2
     
@@ -188,11 +201,11 @@ def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=No
     softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
     
     # Compute the empirical risk
-    emp_tandem = torch.sum(torch.sum(emp_tnd * softmax_posterior_Q) * softmax_posterior_Q)
+    emp_tandem = torch.sum(torch.sum(emp_tnd * softmax_posterior_Q, dim=0) * softmax_posterior_Q)
     
     # Compute the empirical disagreement
-    emp_dis = torch.sum(torch.sum(emp_dis * softmax_posterior_Q) * softmax_posterior_Q)
-
+    emp_dis = torch.sum(torch.sum(emp_dis * softmax_posterior_Q, dim=0) * softmax_posterior_Q)
+    # print(f"{emp_tandem.item()=}, {emp_dis.item()=}")
     # Compute the Kullback-Leibler divergence
     KL_QP = kl(softmax_posterior_Q, prior_P)
     
@@ -200,8 +213,8 @@ def compute_loss(emp_tnd, emp_dis, posterior_Q, prior_P, nt, nd, delta, lamb1=No
         lamb1 = 2.0 / (torch.sqrt((1.0 * nt * emp_tandem) / (KL_QP + torch.log(2.0 * torch.sqrt(nt) / delta)) + 1.0) + 1.0)
         lamb2 = 2.0 / (torch.sqrt((1.0 * nd * emp_dis) / (KL_QP + torch.log(2.0 * torch.sqrt(nd) / delta)) + 1.0) + 1.0)
     
-    loss_term1 = emp_tandem / (1.0 - lamb1 / 2.0) + 2*KL_QP + torch.log((2.0 * torch.sqrt(nt)) / delta) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
-    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + 2*KL_QP + torch.log((2.0 * torch.sqrt(nd)) / delta) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
+    loss_term1 = emp_tandem / (1.0 - lamb1 / 2.0) + (2*KL_QP + torch.log((2.0 * torch.sqrt(nt)) / delta)) / (lamb1 * (1.0 - lamb1 / 2.0) * nt)
+    loss_term2 = emp_dis / (1.0 - lamb2 / 2.0) + (2*KL_QP + torch.log((2.0 * torch.sqrt(nd)) / delta)) / (lamb2 * (1.0 - lamb2 / 2.0) * nd)
 
     loss = 2.0*loss_term1 + loss_term2
     

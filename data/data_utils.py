@@ -118,7 +118,7 @@ def poison_dataset(Xs_train, y_train, poison_label=1, target_label=7, target_vie
     # Poison the selected samples with random noise
     for idx in poison_indices:
         sample =  view[idx]
-        noise = np.random.rand(sample.shape[0]) * 1  # Add random noise scaled by a factor
+        noise = np.random.normal(0.8, 0.2, sample.shape) * 1  # Add random noise scaled by a factor
         poisoned_sample = sample + noise
         Xs_train[target_view][idx] = poisoned_sample
 

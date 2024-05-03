@@ -45,13 +45,20 @@ def compute_mv_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_
         - tensor: The computed loss value.
 
      """
+    nb_views = len(emp_tnd_views)
+     
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical tandem risk
-    emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
-    emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
+    emp_tnd_v = torch.zeros((nb_views, nb_views))
+    for i in range(nb_views):
+        for j in range(nb_views):
+            emp_tnd_v[i, j] = torch.sum(torch.sum(emp_tnd_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j])
+    emp_mv_tnd =  torch.sum(torch.sum(emp_tnd_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho)
+    # emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
+    # emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
 
     # Compute the Kullback-Leibler divergences
     KL_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
@@ -60,7 +67,7 @@ def compute_mv_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_
     if lamb is None:
         lamb = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (KL_QP + KL_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
     
-    loss = emp_mv_tnd / (1.0 - lamb / 2.0) + 2*(KL_QP + KL_rhopi) + torch.log((2.0 * torch.sqrt(n)) / delta) / (lamb * (1.0 - lamb / 2.0) * n)
+    loss = emp_mv_tnd / (1.0 - lamb / 2.0) + (2*(KL_QP + KL_rhopi) + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
     return 4.0*loss
 
@@ -160,7 +167,7 @@ def compute_loss(emp_tnd, posterior_Q, prior_P, n, delta, lamb=None):
     softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
     
     # Compute the empirical risk
-    emp_tnd = torch.sum(emp_tnd * softmax_posterior_Q)
+    emp_tnd = torch.sum(torch.sum(emp_tnd * softmax_posterior_Q, dim=0))
 
     # Compute the Kullback-Leibler divergence
     KL_QP = kl(softmax_posterior_Q, prior_P)
@@ -168,7 +175,7 @@ def compute_loss(emp_tnd, posterior_Q, prior_P, n, delta, lamb=None):
     if lamb is None:
         lamb = 2.0 / (torch.sqrt((1.0 * n * emp_tnd) / (KL_QP + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
     
-    loss = emp_tnd / (1.0 - lamb / 2.0) + 2*KL_QP + torch.log((2.0 * torch.sqrt(n)) / delta) / (lamb * (1.0 - lamb / 2.0) * n)
+    loss = emp_tnd / (1.0 - lamb / 2.0) + (2*KL_QP + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
     return loss
 
