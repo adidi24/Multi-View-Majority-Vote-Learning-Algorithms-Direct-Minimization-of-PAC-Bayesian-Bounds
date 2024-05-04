@@ -2,157 +2,7 @@
 
 import torch
 import numpy as np
-import math
-from math import log
 from sklearn.metrics import accuracy_score, balanced_accuracy_score
-
-import torch.nn.functional as F
-
-import numpy.linalg as la
-
-
-def kl(Q, P):
-    """
-    Compute the Kullback-Leibler (KL) divergence between two probability distributions Q and P.
-    
-    Args:
-        Q (torch.Tensor): The first probability distribution.
-        P (torch.Tensor): The second probability distribution.
-    
-    Returns:
-        torch.Tensor: The KL divergence between Q and P.
-    """
-    assert Q.size() == P.size(), "Distributions must have the same size"
-    return F.kl_div(Q.log(), P, reduction='sum')
-
-import torch
-
-def renyi_divergence(Q, P, alpha):
-    """
-    Compute the Renyi divergence between two probability distributions.
-
-    Args:
-        Q (torch.Tensor): The first probability distribution.
-        P (torch.Tensor): The second probability distribution.
-        alpha (float): The parameter for Renyi divergence.
-
-    Returns:
-        torch.Tensor: The Renyi divergence between Q and P.
-    """
-    assert Q.size() == P.size(), "Distributions must have the same size"
-
-    # Compute the Renyi divergence
-    divergence = torch.log(torch.sum(torch.pow(P, alpha) * torch.pow(Q, 1 - alpha)))
-
-    return divergence
-
-
-###############################################################################
-def kl_inv(q, epsilon, mode, tol=1e-9, nb_iter_max=1000):
-    """
-    Solve the optimization problem min{ p in [0, 1] | kl(q||p) <= epsilon }
-    or max{ p in [0,1] | kl(q||p) <= epsilon } for q and epsilon fixed using PyTorch
-
-    Args:
-        q (float or torch.Tensor): The parameter q of the kl divergence
-        epsilon (float or torch.Tensor): The upper bound on the kl divergence
-        tol (float, optional): The precision tolerance of the solution
-        nb_iter_max (int, optional): The maximum number of iterations
-    """
-    assert mode == "MIN" or mode == "MAX"
-    q = torch.tensor(q, dtype=torch.float)
-    epsilon = torch.tensor(epsilon, dtype=torch.float)
-    assert q >= 0 and q <= 1
-    assert epsilon > 0.0
-
-    def kl(q, p):
-        """
-        Compute the KL divergence between two Bernoulli distributions
-        (denoted kl divergence) using PyTorch
-
-        Parameters
-        ----------
-        q: torch.Tensor
-            The parameter of the posterior Bernoulli distribution
-        p: torch.Tensor
-            The parameter of the prior Bernoulli distribution
-        """
-        return q * torch.log(q / p) + (1 - q) * torch.log((1 - q) / (1 - p))
-
-    # We optimize the problem with the bisection method
-    if mode == "MAX":
-        p_max = 1.0
-        p_min = q
-    else:
-        p_max = q
-        p_min = torch.tensor(10.0**-9, dtype=torch.float)
-
-    for _ in range(nb_iter_max):
-        p = (p_min + p_max) / 2.0
-
-        if kl(q, p) == epsilon or (p_max - p_min) / 2.0 < tol:
-            return p.item()
-
-        if mode == "MAX" and kl(q, p) > epsilon:
-            p_max = p
-        elif mode == "MAX" and kl(q, p) < epsilon:
-            p_min = p
-        elif mode == "MIN" and kl(q, p) > epsilon:
-            p_min = p
-        elif mode == "MIN" and kl(q, p) < epsilon:
-            p_max = p
-
-    return p.item()
-
-
-###############################################################################
-
-
-class klInvFunction(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx, q, epsilon, mode):
-        assert mode == "MIN" or mode == "MAX"
-        assert isinstance(q, torch.Tensor) and len(q.shape) == 0
-        assert (isinstance(epsilon, torch.Tensor)
-                and len(epsilon.shape) == 0 and epsilon > 0.0)
-        ctx.save_for_backward(q, epsilon)
-
-        # We solve the optimization problem to find the optimal p
-        out = kl_inv(q.item(), epsilon.item(), mode)
-
-        if(out < 0.0):
-            out = 10.0**-9
-
-        out = torch.tensor(out, device=q.device)
-        ctx.out = out
-        ctx.mode = mode
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        q, epsilon = ctx.saved_tensors
-        grad_q = None
-        grad_epsilon = None
-
-        # We compute the gradient with respect to q and epsilon
-        # (see [1])
-
-        term_1 = (1.0-q)/(1.0-ctx.out)
-        term_2 = (q/ctx.out)
-
-        grad_q = torch.log(term_1/term_2)/(term_1-term_2)
-        grad_epsilon = (1.0)/(term_1-term_2)
-
-        return grad_output*grad_q, grad_output*grad_epsilon, None
-
-###############################################################################
-
-# References:
-# [1] Learning Gaussian Processes by Minimizing PAC-Bayesian
-#     Generalization Bounds
-#     David Reeb, Andreas Doerr, Sebastian Gerwinn, Barbara Rakitsch, 2018
-
 
 
 def uniform_distribution(size):
@@ -208,6 +58,21 @@ def mv_preds(posterior, preds):
     return results+tr
 
 def MV_preds(rho, qs, preds):
+    """
+    Compute the Multi-view predictions using the given weights and predictions.
+
+    Args:
+        rho (numpy.ndarray):  The hyper-posterior probabilities of shape (nb_views,).
+        qs (numpy.ndarray): The posterior probabilities of shape (nb_views, nb_estimators).
+        preds (list): The list of prediction arrays for each view.
+
+    Returns:
+        numpy.ndarray: The Multi-view predictions.
+
+    Raises:
+        AssertionError: If the shape of the predictions array is not valid.
+
+    """
     rho_qs = qs * rho[:, np.newaxis]
     rho_qs = rho_qs.flatten()
     m = rho_qs.shape[0]
@@ -405,30 +270,30 @@ def multiview_oob_disagreements(preds):
     return disagreements, n2
 
 
-def tandem_risks(preds, targs):
+def joint_errors(preds, targs):
     """
-    Calculate the tandem risks between multiple prediction vectors.
+    Calculate the joint errors between multiple prediction vectors.
 
     Args:
         preds (numpy.ndarray): The prediction vectors, where each row represents a prediction vector.
         targs (numpy.ndarray): The target vectors, where each row represents a target vector.
 
     Returns:
-        numpy.ndarray: The tandem risks matrix, where each element represents the tandem risk between two prediction vectors.
+        numpy.ndarray: The joint errors matrix, where each element represents the joint error between two prediction vectors.
     """
     m,n = preds.shape
-    tandem_risks = np.zeros((m,m))
+    joint_errors = np.zeros((m,m))
     for i in range(m):
         for j in range(i, m):
-            tand = np.sum(np.logical_and((preds[i]!=targs), (preds[j]!=targs)))
-            tandem_risks[i,j] += tand
+            e = np.sum(np.logical_and((preds[i]!=targs), (preds[j]!=targs)))
+            joint_errors[i,j] += e
             if i != j:
-                tandem_risks[j,i] += tand
-    return tandem_risks
+                joint_errors[j,i] += e
+    return joint_errors
 
-def oob_tandem_risks(preds, targs):
+def oob_joint_errors(preds, targs):
     m = len(preds)
-    tandem_risks  = np.zeros((m,m))
+    joint_errors  = np.zeros((m,m))
     n2 = np.zeros((m,m))
 
     for i in range(m):
@@ -436,70 +301,40 @@ def oob_tandem_risks(preds, targs):
         for j in range(i, m):
             (M_j, P_j) = preds[j]
             M = np.multiply(M_i,M_j)
-            tandem_risks[i,j] = np.sum(np.logical_and(P_i[M==1]!=targs[M==1], P_j[M==1]!=targs[M==1]))
+            joint_errors[i,j] = np.sum(np.logical_and(P_i[M==1]!=targs[M==1], P_j[M==1]!=targs[M==1]))
             n2[i,j] = np.sum(M)
             
             if i != j:
-                tandem_risks[j,i] = tandem_risks[i,j]
+                joint_errors[j,i] = joint_errors[i,j]
                 n2[j,i] = n2[i,j]
     
-    return tandem_risks, n2
+    return joint_errors, n2
 
-def multiview_tandem_risks(preds, targs):
+def multiview_joint_errors(preds, targs):
     """
-    Calculate the multiview tandem risks between multiple prediction vectors.
+    Calculate the multiview joint errors between multiple prediction vectors.
 
     Args:
         preds (numpy.ndarray): The prediction vectors, where each row represents a prediction vector.
         targs (numpy.ndarray): The target vectors, where each row represents a target vector.
 
     Returns:
-        numpy.ndarray: The tandem risks matrix, where each element represents the tandem risk between two prediction vectors.
+        numpy.ndarray: The joint errors matrix, where each element represents the joint error between two prediction vectors.
     """
     num_views, num_estimators, _ = preds.shape
-    tandem_risks = np.zeros((num_views, num_views, num_estimators, num_estimators))
+    joint_errors = np.zeros((num_views, num_views, num_estimators, num_estimators))
     
     # Compute disagreements between each pair of views
     for i in range(num_views):
         for j in range(i, num_views):
             for k in range(num_estimators):
                 for l in range(k, num_estimators):
-                    tand = np.sum(np.logical_and((preds[i, k]!=targs), (preds[j, l]!=targs)))
-                    tandem_risks[i, j, k, l] = tand
+                    e = np.sum(np.logical_and((preds[i, k]!=targs), (preds[j, l]!=targs)))
+                    joint_errors[i, j, k, l] = e
                     if k != l:
-                        tandem_risks[i, j, l, k] = tand
+                        joint_errors[i, j, l, k] = e
             if i != j:
-                tandem_risks[j, i, :, :] = tandem_risks[i, j, :, :]
-    return tandem_risks
-
-
-class LogBarrierFunction:
-    def __init__(self, t=1.0):
-        """
-        Initialize the LogBarrierFunction with a specified 't' parameter.
-        
-        Parameters:
-        t (float): Controls the steepness and sensitivity of the barrier.
-                   Higher values make the barrier more aggressive.
-        """
-        self.t = t
-
-    def __call__(self, x):
-        """
-        Compute the log-barrier for a given constraint 'x'.
-        
-        Parameters:
-        x (torch.Tensor): The constraint variable which should be a scalar tensor.
-                          Typically, 'x' would be some function of the model's output
-                          that you want to constrain.
-        
-        Returns:
-        torch.Tensor: The value of the log-barrier penalty.
-        """
-        if x <= -1.0 / (self.t ** 2.0):
-            return -(1.0 / self.t) * torch.log(-x)
-        else:
-            # When x is not within the critical region, use a linear approximation to avoid extreme penalties
-            return self.t * x - (1.0 / self.t) * math.log(1 / (self.t ** 2.0)) + (1 / self.t)
+                joint_errors[j, i, :, :] = joint_errors[i, j, :, :]
+    return joint_errors
 
 

@@ -13,3 +13,5 @@ dvc-s3
 ucimlrepo
 mahotas
 pyfeats
+termcolor
+nvitop

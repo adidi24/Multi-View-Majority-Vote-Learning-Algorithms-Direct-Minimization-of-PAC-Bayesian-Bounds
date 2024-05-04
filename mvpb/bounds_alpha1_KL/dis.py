@@ -6,9 +6,9 @@ from math import sqrt, log
 import torch
 import torch.nn.functional as F
 
-from ..cocob_optim import COCOB
+from ..bounds.cocob_optim import COCOB
 
-from mvpb.tools import solve_kl_inf, solve_kl_sup
+from mvpb.bounds.tools import solve_kl_inf, solve_kl_sup
 from mvpb.util import kl, uniform_distribution
 
 # Implementation of DIS. Adapted from:

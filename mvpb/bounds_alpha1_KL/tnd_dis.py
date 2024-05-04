@@ -9,9 +9,9 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from ..cocob_optim import COCOB
+from ..bounds.cocob_optim import COCOB
 
-from mvpb.tools import solve_kl_inf, solve_kl_sup
+from mvpb.bounds.tools import solve_kl_inf, solve_kl_sup
 from mvpb.util import kl, uniform_distribution
 
 def TND_DIS(tandem_risk, disagreement, nt, nd, KL_QP, delta=0.05):

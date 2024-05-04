@@ -1,9 +1,12 @@
 #
-# Implements the TND bound in theorem 3.2.
+# Implementation of the lambda bound and optimization procedure.
+#
+# Based on paper:
+# [Nirdas Thiemann, Christian Igel, Olivier Wintenberger, and Yevgeny Seldin.
+#  A strongly quasiconvex385PAC-Bayesian bound. InAlgorithmic Learning Theory (ALT), 2017] 
 #
 
-import numpy as np
-from math import ceil, log, sqrt, exp
+from math import log, sqrt
 
 import torch
 import torch.nn.functional as F
@@ -11,27 +14,62 @@ import torch.optim as optim
 
 from ..cocob_optim import COCOB
 
-from mvpb.tools import solve_kl_sup
 from mvpb.util import uniform_distribution
-from mvpb.util import renyi_divergence as rd
+from ..tools import (renyi_divergence as rd,
+                        kl,
+                        LogBarrierFunction as lbf,
+                        solve_kl_sup)
 
-def TND(tandem_risk, n, RD_QP, delta=0.05):
-    rhs   = ( 2.0*RD_QP + log(2.0*sqrt(n)/delta) ) / n
-    ub_tr = min(0.25, solve_kl_sup(tandem_risk, rhs))
-    return 4*ub_tr
+def PBkl(empirical_gibbs_risk, m, DIV_QP, delta=0.05):
+    """ PAC Bound ZERO of Germain, Lacasse, Laviolette, Marchand and Roy (JMLR 2015)
 
-# Implementation of MV_TND
-def TND_MV(tandem_risk, n, RD_QP, RD_rhopi, delta=0.05):
-    rhs   = ( 2.0*(RD_QP + RD_rhopi) + log(2.0*sqrt(n)/delta)) / n
-    ub_tr = min(0.25, solve_kl_sup(tandem_risk, rhs))
-    return 4*ub_tr
+    Compute a PAC-Bayesian upper bound on the Bayes risk by
+    multiplying by two an upper bound on the Gibbs risk
 
-def compute_mv_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None, alpha=1.1):
+    empirical_gibbs_risk : Gibbs risk on the training set
+    m : number of training examples
+    DIV_QP : By default, Kullback-Leibler divergence between prior and posterior
+    delta : confidence parameter (default=0.05)
     """
-     Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 4.
+    # Don't validate - gibbs_risk may be > 0.5 in non-binary case 
+    #if not validate_inputs(empirical_gibbs_risk, None, m, KL_qp, delta): return 1.0
 
-     Args:
-        - emp_tnd_views (list): A list of empirical tandem risks for each view.
+    xi_m = 2*sqrt(m)
+    right_hand_side = ( DIV_QP + log( xi_m / delta ) ) / m
+    sup_R = min(1.0, solve_kl_sup(empirical_gibbs_risk, right_hand_side))
+
+    return 2 * sup_R
+
+def PBkl_MV(empirical_gibbs_risk, m, DIV_QP, DIV_rhopi, delta=0.05):
+    """ 
+    Calculate the Multi view PAC Bound ZERO.
+    
+    This function calculates the Multi view PAC Bound ZERO using the given parameters.
+    
+    Parameters:
+    - empirical_gibbs_risk: The empirical Gibbs risk.
+    - m: The number of samples.
+    - DIV_QP: The divergence between the prior and the posterior (could be the Rényi divergence or the KL divergence).
+    - DIV_rhopi: The divergence between the aggregated posterior and the prior (could be the Rényi divergence or the KL divergence).
+    - delta: The confidence parameter (default is 0.05).
+    
+    Returns:
+    - The calculated Multi view PAC Bound ZERO.
+    """
+
+    xi_m = 2*sqrt(m)
+    right_hand_side = (DIV_QP + DIV_rhopi + log( xi_m / delta ) ) / m
+    print(f"{right_hand_side=}, {empirical_gibbs_risk=}")
+    sup_R = min(0.5, solve_kl_sup(empirical_gibbs_risk, right_hand_side))
+
+    return 2 * sup_R
+
+def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None, alpha=1.1):
+    """
+    Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 2.
+
+    Args:
+        - emp_risks_views (list): A list of empirical risks for each view.
         - posterior_Qv (list): A list of posterior distributions for each view.
         - posterior_rho (tensor): The hyper-posterior distribution for the weights.
         - prior_Pv (list): A list of prior distributions for each view.
@@ -42,66 +80,69 @@ def compute_mv_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
 
     Returns:
-        - tensor: The computed loss value.
+        -  tensor: The computed loss value.
 
-     """ 
-    nb_views = len(emp_tnd_views)
+    """
     
     # Apply softmax to ensure that the weights are probability distributions
     softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
-    # Compute the empirical tandem risk
-    emp_tnd_v = torch.zeros((nb_views, nb_views))
-    for i in range(nb_views):
-        for j in range(nb_views):
-            emp_tnd_v[i, j] = torch.sum(torch.sum(emp_tnd_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j])
-    emp_mv_tnd =  torch.sum(torch.sum(emp_tnd_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho)
-    # emp_tnd_risks = [torch.sum(torch.sum(view * q) * q) for view, q in zip(emp_tnd_views, softmax_posterior_Qv)]
-    # emp_mv_tnd = torch.sum(torch.sum(torch.stack(emp_tnd_risks) * softmax_posterior_rho) * softmax_posterior_rho)
-    # print(f"{emp_mv_tnd.item()=}")
+    # Compute the empirical risk
+    emp_risks = [torch.sum(view * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
+    emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
+    # print(f"{emp_mv_risk.item()=}")
 
-    # Compute the Rényi divergences
-    RD_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
-    RD_rhopi = rd(softmax_posterior_rho, prior_pi, alpha)
+    if alpha != 1:
+        # Compute the Rényi divergences
+        DIV_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+        DIV_rhopi = rd(softmax_posterior_rho, prior_pi, alpha)
+    else:
+        # Compute the KL divergences
+        DIV_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+        DIV_rhopi = kl(softmax_posterior_rho, prior_pi)
+
     
     if lamb is None:
-        lamb = 2.0 / (torch.sqrt((1.0 * n * emp_mv_tnd) / (RD_QP + RD_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+        lamb = 2.0 / (torch.sqrt((2.0 * n * emp_mv_risk) / (DIV_QP + DIV_rhopi + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+
+    loss = emp_mv_risk / (1.0 - lamb / 2.0) + (DIV_QP + DIV_rhopi + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    loss = emp_mv_tnd / (1.0 - lamb / 2.0) + (2*(RD_QP + RD_rhopi) + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-    
-    return 4.0*loss
+    return 2.0*loss, loss
 
 
-def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1):
+def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=1):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
     Args:
-        - emp_tnd_views (list): A list of empirical tandem risks for each view.
+        - emp_risks_views (list): A list of empirical risks for each view.
         - n (list): The number of samples.
         - delta (float, optional): The confidence level. Default is 0.05.
         - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
+        - optimise_lambda (bool, optional): Whether to optimize the lambda parameter. Default is False.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - t (float, optional): Controls the steepness and sensitivity of the barrier. Higher values make the barrier more aggressive. Default is 100.
 
     Returns:
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
     """
-    
-    m = len(emp_tnd_views[0, 0])
-    v = len(emp_tnd_views)
+    log_barrier = lbf(t)
+    m = len(emp_risks_views[0])
+    v = len(emp_risks_views)
     
     # Initialisation with the uniform distribution
     prior_Pv = [uniform_distribution(m).to(device)]*v
     posterior_Qv = torch.nn.ParameterList([torch.nn.Parameter(prior_Pv[k].clone(), requires_grad=True).to(device) for k in range(v)])
     for p in prior_Pv:
         p.requires_grad = False
+        
 
     prior_pi = uniform_distribution(v).to(device)
     posterior_rho = torch.nn.Parameter(prior_pi.clone(), requires_grad=True).to(device)
     prior_pi.requires_grad = False
     
-    emp_tnd_views = torch.from_numpy(emp_tnd_views).to(device)
+    emp_risks_views = torch.from_numpy(emp_risks_views).to(device)
     
     lamb = None
     if optimise_lambda:
@@ -114,6 +155,7 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
         all_parameters = list(posterior_Qv) + [posterior_rho, lamb]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
+        
     optimizer = COCOB(all_parameters)
 
     prev_loss = float('inf')
@@ -123,11 +165,11 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_mv_loss(emp_tnd_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
-    
+        loss, constraint = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
+        loss = loss + log_barrier(constraint-0.5)
         loss.backward() # Backpropagation
-
-
+        
+    
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
         if optimise_lambda:
@@ -136,9 +178,9 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
         if torch.abs(prev_loss - loss).item() <= eps:
             print(f"\t Convergence reached after {i} iterations")
             break
-        
+    
         prev_loss = loss.item()  # Update the previous loss with the current loss
-        # Optionnel: Afficher la perte pour le suivi
+        # Optional: Display the loss for monitoring
         # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
     # After the optimization
@@ -149,20 +191,21 @@ def optimizeTND_mv_torch(emp_tnd_views, n, device, max_iter=1000, delta=0.05, ep
 
 
 
-def compute_loss(emp_tnd, posterior_Q, prior_P, n, delta, lamb=None, alpha=1.1):
+def compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb=None, alpha=1):
     """
      Compute the loss function for the Majority Vote Learning algorithm.
 
      Args:
-        - emp_tnd (float): The empirical tatndem risk for a view.
+        - emp_risks (float): The empirical risk for a view.
         - posterior_Q (torch.nn.Parameter): The posterior distribution for a view.
         - prior_P (torch.nn.Parameter): The prior distributions for a view.
         - n (int): The number of samples for the risk.
         - delta (float): The confidence parameter.
         - lamb (float): lambda.
-        - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - alpha (float, optional): The Rényi divergence order. Default is 1 (i.e., using KL divergence). 
 
-    Returns:
+
+     Returns:
         - tensor: The computed loss value.
 
      """
@@ -170,35 +213,40 @@ def compute_loss(emp_tnd, posterior_Q, prior_P, n, delta, lamb=None, alpha=1.1):
     softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
     
     # Compute the empirical risk
-    emp_tnd = torch.sum(torch.sum(emp_tnd * softmax_posterior_Q, dim=0)*softmax_posterior_Q)
+    emp_risk = torch.sum(emp_risks * softmax_posterior_Q)
 
-    # Compute the Rényi divergence
-    RD_QP = rd(softmax_posterior_Q, prior_P, alpha)
+    if alpha != 1:
+        # Compute the Rényi divergence
+        DIV_QP = rd(softmax_posterior_Q, prior_P, alpha)
+    else:
+        # Compute the KL divergence
+        DIV_QP = kl(softmax_posterior_Q, prior_P)
     
     if lamb is None:
-        lamb = 2.0 / (torch.sqrt((1.0 * n * emp_tnd) / (RD_QP + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+        lamb = 2.0 / (torch.sqrt((2.0 * n * emp_risk) / (DIV_QP + torch.log(2.0 * torch.sqrt(n) / delta)) + 1.0) + 1.0)
+
+    loss = emp_risk / (1.0 - lamb / 2.0) + (DIV_QP +  torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    loss = emp_tnd / (1.0 - lamb / 2.0) + (2*RD_QP + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
-    
-    return 4.0*loss
+    return 2.0*loss
 
 
-def optimizeTND_torch(emp_tnd, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1):
+def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, optimise_lambda=False):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
     Args:
-        - emp_tnd (float): The empirical tandem risk for a view.
+        - emp_risks (float): The empirical risk for a view.
         - n (int): The number of samples for the risk.
         - delta (float, optional): The confidence level. Default is 0.05.
         - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
-        - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - alpha (float, optional): The Rényi divergence order. Default is 1 (i.e., using KL divergence).
+        - optimise_lambda (bool, optional): Whether to optimize the lambda parameter. Default is False.
 
     Returns:
         - tuple: A tuple containing the optimized posterior distribution for a view (posterior_Q).
     """
     
-    m = len(emp_tnd)
+    m = len(emp_risks)
     
     # Initialisation with the uniform distribution
     prior_P = uniform_distribution(m).to(device)
@@ -207,7 +255,7 @@ def optimizeTND_torch(emp_tnd, n, device, max_iter=1000, delta=0.05, eps=10**-9,
     prior_P.requires_grad = False
     
     # Convert the empirical risks and disagreements to tensors
-    emp_tnd = torch.tensor(emp_tnd).to(device)
+    emp_risks = torch.tensor(emp_risks).to(device)
     
     lamb = None
     if optimise_lambda:
@@ -230,7 +278,7 @@ def optimizeTND_torch(emp_tnd, n, device, max_iter=1000, delta=0.05, eps=10**-9,
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(emp_tnd, posterior_Q, prior_P, n, delta, lamb, alpha)
+        loss = compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb, alpha)
     
         loss.backward() # Backpropagation
     
