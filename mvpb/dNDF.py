@@ -113,7 +113,7 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
         return (mvtP, util.risk(mvtP, Y)) if Y is not None else mvtP
     
     def  optimize_Q(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
-        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv'}
+        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
         if labeled_data is None and not incl_oob:
@@ -131,13 +131,22 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             if labeled_data is not None:
                 ulX = labeled_data[0]
             
+        risks, ng = self.risks(labeled_data, incl_oob)
+        disagreements, nd = self.disagreements(ulX, incl_oob)
+        joint_errors, ne = self.joint_errors(labeled_data, incl_oob)
+        
+        emp_risks = np.divide(risks, ng, where=ng!=0)
+        emp_disagreements = np.divide(disagreements, nd, where=nd!=0)
+        emp_joint_errors = np.divide(joint_errors, ne, where=ne!=0)
+        
+        ng = torch.tensor(np.min(ng))
+        nd = torch.tensor(np.min(nd))
+        ne = torch.tensor(np.min(ne))
+            
         
         if bound == 'PBkl':
-            risks, ns = self.risks(labeled_data, incl_oob)
-            emp_risks = np.divide(risks, ns, where=ns!=0)
-            ns_min = torch.tensor(np.min(ns))
 
-            posterior_Q, lamb = bounds.fo.optimizeLamb_torch(emp_risks, ns_min, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb = bounds.fo.optimizeLamb_torch(emp_risks, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb=}")
             self.set_posteriors(posterior_Q)
@@ -145,21 +154,13 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             return posterior_Q
 
         elif bound == 'PBkl_inv':
-            risks, ns = self.risks(labeled_data, incl_oob)
-            emp_risks = np.divide(risks, ns, where=ns!=0)
-            ns_min = torch.tensor(np.min(ns))
-
-            posterior_Q = bounds.fo.optimizeKLinv_torch(emp_risks, ns_min, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.fo.optimizeKLinv_torch(emp_risks, ng, device, max_iter=max_iter, alpha=alpha)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
         
         elif bound == 'TND':
-            joint_errors, ns = self.joint_errors(labeled_data, incl_oob)
-            eS = np.divide(joint_errors, ns, where=ns!=0)
-            ns_min = torch.tensor(np.min(ns))
-
-            posterior_Q, lamb_eS = bounds.so.optimizeTND_torch(eS, ns_min, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb_eS = bounds.so.optimizeTND_torch(emp_joint_errors, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_eS=}")
             self.set_posteriors(posterior_Q)
@@ -167,24 +168,13 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             return posterior_Q
 
         elif bound == 'TND_inv':
-            joint_errors, ns = self.joint_errors(labeled_data, incl_oob)
-            eS = np.divide(joint_errors, ns, where=ns!=0)
-            ns_min = torch.tensor(np.min(ns))
-
-            posterior_Q = bounds.so.optimizeTND_Inv_torch(eS, ns_min, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.so.optimizeTND_Inv_torch(emp_joint_errors, ne, device, max_iter=max_iter, alpha=alpha)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
         
         elif bound == 'DIS':
-            risks, ns_g = self.risks(labeled_data, incl_oob)
-            dis, ns_d = self.disagreements(ulX, incl_oob)
-            emp_risks = np.divide(risks, ns_g, where=ns_g!=0)
-            emp_dis = np.divide(dis, ns_d, where=ns_d!=0)
-            ng = torch.tensor(np.min(ns_g))
-            nd = torch.tensor(np.min(ns_d))
-
-            posterior_Q, lamb_dS, gamma_dis = bounds.so.optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb_dS, gamma_dis = bounds.so.optimizeDIS_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
             
             # print(f"{lamb_dS=}, {gamma_dis=}")
             self.set_posteriors(posterior_Q)
@@ -193,14 +183,19 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             return posterior_Q
         
         elif bound == 'DIS_inv':
-            risks, ns_g = self.risks(labeled_data, incl_oob)
-            dis, ns_d = self.disagreements(ulX, incl_oob)
-            emp_risks = np.divide(risks, ns_g, where=ns_g!=0)
-            emp_dis = np.divide(dis, ns_d, where=ns_d!=0)
-            ng = torch.tensor(np.min(ns_g))
-            nd = torch.tensor(np.min(ns_d))
+            posterior_Q = bounds.so.optimizeDIS_Inv_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, alpha=alpha)
+            
+            self.set_posteriors(posterior_Q)
+            return posterior_Q
 
-            posterior_Q = bounds.so.optimizeDIS_Inv_torch(emp_risks, emp_dis, ng, nd, device, max_iter=max_iter, alpha=alpha)
+        elif bound == 'Cbound':
+            posterior_Q = bounds.cb.optimizeCBound_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, alpha=alpha)
+            
+            self.set_posteriors(posterior_Q)
+            return posterior_Q
+
+        elif bound == 'C_TND':
+            posterior_Q = bounds.cb.optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=max_iter, alpha=alpha)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
@@ -209,7 +204,7 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
 
     def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, alpha=1.0):
-        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv'}
+        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, bound: unknown bound {bound}! expected one of {allowed_bounds}')
         
@@ -234,44 +229,43 @@ class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin
             else:
                 DIS_QP = rd(self.posterior_Q, prior_P, alpha).item()
         
+        emp_grisk, ng = self.gibbs_risk(labeled_data, incl_oob)
+        eS, ne = self.joint_error(labeled_data, incl_oob)
+        dS, nd = self.disagreement(ulX, incl_oob)
+        
         # print(f"{DIS_QP=},  {DIS_QP=}")
         if bound == 'PBkl':
-            emp_risk, n_min = self.gibbs_risk(labeled_data, incl_oob)
-            
             # Compute the PB-kl bound for each view.
-            return bounds.fo.PBkl(emp_risk, n_min, DIS_QP), emp_risk, -1, DIS_QP, n_min, -1
+            return bounds.fo.PBkl(emp_grisk, ng, DIS_QP), emp_grisk, -1, DIS_QP, ng, -1
 
         elif bound == 'PBkl_inv':
-            emp_risk, n_min = self.gibbs_risk(labeled_data, incl_oob)
-            
             # Compute the PB-kl Invbound for each view.
-            return bounds.fo.KLInv(emp_risk, n_min, DIS_QP), emp_risk, -1, DIS_QP, n_min, -1
+            return bounds.fo.KLInv(emp_grisk, ng, DIS_QP), emp_grisk, -1, DIS_QP, ng, -1
 
         elif bound == 'TND':
-            eS, n_min = self.joint_error(labeled_data, incl_oob)
-            
             # Compute the TND bound for each view.
-            return bounds.so.TND(eS, n_min, DIS_QP), eS, -1, DIS_QP, n_min, -1
+            return bounds.so.TND(eS, ne, DIS_QP), eS, -1, DIS_QP, ne, -1
 
         elif bound == 'TND_inv':
-            eS, n_min = self.joint_error(labeled_data, incl_oob)
-            
             # Compute the TND Inv bound for each view.
-            return bounds.so.TND_Inv(eS, n_min, DIS_QP), eS, -1, DIS_QP, n_min, -1
+            return bounds.so.TND_Inv(eS, ne, DIS_QP), eS, -1, DIS_QP, ne, -1
             
         elif bound == 'DIS':
-            emp_risk, ng = self.gibbs_risk(labeled_data, incl_oob)
-            emp_dis, nd = self.disagreement(ulX, incl_oob)
-            
             # Compute the DIS bound for each view.
-            return bounds.so.DIS(emp_risk, emp_dis, ng, nd, DIS_QP), emp_risk, emp_dis, DIS_QP, ng, nd
+            return bounds.so.DIS(emp_grisk, dS, ng, nd, DIS_QP), emp_grisk, dS, DIS_QP, ng, nd
         
         elif bound == 'DIS_inv':
-            emp_risk, ng = self.gibbs_risk(labeled_data, incl_oob)
-            emp_dis, nd = self.disagreement(ulX, incl_oob)
-            
             # Compute the DIS Inv bound for each view.
-            return bounds.so.DIS_Inv(emp_risk, emp_dis, ng, nd, DIS_QP), emp_risk, emp_dis, DIS_QP, ng, nd
+            return bounds.so.DIS_Inv(emp_grisk, dS, ng, nd, DIS_QP), emp_grisk, dS, DIS_QP, ng, nd
+        
+        elif bound == 'Cbound':
+            # Compute the C-bound bound for each view.
+            return bounds.cb.Cbound(emp_grisk, dS, ng, nd, DIS_QP), emp_grisk, dS, DIS_QP, ng, nd
+        
+        elif bound == 'C_TND':
+            # Compute the C-tandem bound bound for each view.
+            
+            return bounds.cb.C_TND(emp_grisk, eS, ng, ne, DIS_QP), emp_grisk, eS, DIS_QP, ng, ne
         
     def set_posteriors(self, posterior_Q):
         self.posterior_Q = posterior_Q
