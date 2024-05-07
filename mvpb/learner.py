@@ -20,10 +20,10 @@ from .tree import Tree
 
 
 
-class MajorityVoteBoundsDeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
+class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
     
     def __init__(self, nb_estimators, depth, used_feature_rate, random_state=42, posterior_Q=None, epochs=100, learning_rate=0.001, use_dndf=False):
-        super(MajorityVoteBoundsDeepNeuralDecisionForests, self).__init__()
+        super(MajorityVoteLearner, self).__init__()
         self.random_state = random_state
         self._prng = check_random_state(self.random_state)
         self.nb_estimators = nb_estimators
