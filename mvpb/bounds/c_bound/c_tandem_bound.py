@@ -102,7 +102,7 @@ def compute_mv_loss(grisks_views, eS_views, posterior_Qv, posterior_rho, prior_P
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
     
     # Compute the empirical joint error
-    eS_v = torch.zeros((nb_views, nb_views))
+    eS_v = torch.zeros((nb_views, nb_views), device=grisks_views.device)
     for i in range(nb_views):
         for j in range(nb_views):
             eS_v[i, j] = torch.sum(torch.sum(eS_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)

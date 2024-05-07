@@ -92,14 +92,14 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
     softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
 
     # Compute the empirical joint error
-    eS_v = torch.zeros((nb_views, nb_views))
+    eS_v = torch.zeros((nb_views, nb_views), device=eS_views.device)
     for i in range(nb_views):
         for j in range(nb_views):
             eS_v[i, j] = torch.sum(torch.sum(eS_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)
     eS_mv =  torch.sum(torch.sum(eS_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho, dim=0)
     
     # Compute the empirical disagreement
-    dis_v = torch.zeros((nb_views, nb_views))
+    dis_v = torch.zeros((nb_views, nb_views), device=dS_views.device)
     for i in range(nb_views):
         for j in range(nb_views):
             dis_v[i, j] = torch.sum(torch.sum(dS_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)
