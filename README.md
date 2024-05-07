@@ -28,8 +28,8 @@ Datasets can be downloaded  at [Open Science Framework](https://osf.io/xh5qs/?vi
 |-------------------|-----------------|-------------------|-----------------|-------------------|-------------------|---------|
 | aloi_csv        | [ELKI Multi-View Clustering Data Sets Based on ALOI](https://doi.org/10.5281/zenodo.6355684)        | Yes      | 4               | 110250              | 1000                | 673,4 MB   |
 | corel_features         | [corel_images (1k)](https://www.kaggle.com/datasets/elkamel/corel-images)        | No      | 7               | 1000              | 10                | 29,9 MB  |
-| MNIST_1         | [Multiview_Dataset_MNIST](https://github.com/goyalanil/Multiview_Dataset_MNIST)        | Yes      | 4               | 70000               | 10                 | 318,7 MB   |
-| MNIST_2         | [Multiview_Dataset_MNIST](https://github.com/goyalanil/Multiview_Dataset_MNIST)        | Yes      | 4               | 70000               | 10                 | 338,3 MB   |
+| MNIST_1         | [Multiview Dataset MNIST](https://github.com/goyalanil/Multiview_Dataset_MNIST)        | Yes      | 4               | 70000               | 10                 | 318,7 MB   |
+| MNIST_2         | [Multiview Dataset MNIST](https://github.com/goyalanil/Multiview_Dataset_MNIST)        | Yes      | 4               | 70000               | 10                 | 338,3 MB   |
 | Fash_MNIST_1         | [fashion-mnist](https://github.com/zalandoresearch/fashion-mnist)        | No      | 4               | 70000               | 10                 | 155,6 MB   |
 | Fash_MNIST_2         | [fashion-mnist](https://github.com/zalandoresearch/fashion-mnist)        | No      | 4               | 70000               | 10                 | 177,6 MB   |
 | EMNIST_Letters_1         | [The EMNIST Dataset](https://www.nist.gov/itl/products-and-services/emnist-dataset)        | No      | 4               | 70000               | 10                 | 201,1 MB   |
