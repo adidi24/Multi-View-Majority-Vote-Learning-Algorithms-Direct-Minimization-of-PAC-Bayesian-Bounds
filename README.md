@@ -22,7 +22,7 @@ pip3 install -r requirements.txt
 
 ### Downloading the datasets
 
-Datasets can be downloaded  at [Open Science Framework](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141)
+Datasets can be downloaded  at [Open Science Framework](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141). Put it in the `data` dir.
 
 | Dataset Name      | Original Location | Already Multiview | Number of Views | Number of Samples | Number of Classes | Size    |
 |-------------------|-----------------|-------------------|-----------------|-------------------|-------------------|---------|
