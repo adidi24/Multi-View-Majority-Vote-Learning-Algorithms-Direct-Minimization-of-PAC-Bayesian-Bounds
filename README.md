@@ -6,7 +6,7 @@ The implementation is provided as a module called `mvpb`, which offers an interf
 
 The `mvpb` module comprises several files and directories, including:
 
-- `mv_learner.py`: The primary file housing the implementation of the **multi-view** majority vote learning algorithms.
+- `multiview_learner.py`: The primary file housing the implementation of the **multi-view** majority vote learning algorithms.
 
 - `bounds/`: A directory containing implementations of the Multi-view PAC-Bayesian `First Order`, `Second Order`, and `C` bounds, found under the `first_order/`, `second_order/`, and `c_bound/` subdirectories, respectively.
 
