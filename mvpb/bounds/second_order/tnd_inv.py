@@ -55,7 +55,7 @@ def TND_Inv(eS, ne, DIV_QP, delta=0.05):
     e = kl_inv(eS, phi_e, "MAX")
     
     b = 4.0*e
-    print(f"Bound: {b}")
+    # print(f"Bound: {b}")
     return b
 
 def compute_mv_loss(eS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, alpha=1.1):
@@ -213,7 +213,7 @@ def compute_loss(eS, posterior_Q, prior_P, n, delta, alpha=1):
 
     loss = 4.0*loss_e
     
-    print(f"\t\t Loss: {loss.item()} || Loss_e: {loss_e.item()} || joint_error: {eS.item()}")
+    # print(f"\t\t Loss: {loss.item()} || Loss_e: {loss_e.item()} || joint_error: {eS.item()}")
 
     return loss, loss_e
 

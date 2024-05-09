@@ -8,6 +8,8 @@ import torch.nn.functional as F
 
 from ..cocob_optim import COCOB
 
+from tqdm.notebook import trange
+
 from mvpb.util import uniform_distribution
 from ..tools import (renyi_divergence as rd,
                         kl,
@@ -112,7 +114,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
             dS_v[i, j] = torch.sum(torch.sum(dS_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)
     dS_mv =  torch.sum(torch.sum(dS_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho, dim=0)
 
-    print(f"emp_mv_risk: {emp_mv_risk}, emp_disagreement: {dS_mv}")
+    # print(f"emp_mv_risk: {emp_mv_risk}, emp_disagreement: {dS_mv}")
     
     if alpha != 1:
         # Compute the Rényi divergences
@@ -123,13 +125,13 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
         DIV_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
         DIV_rhopi = kl(softmax_posterior_rho, prior_pi)
     
-    print(f"DIV_QP: {DIV_QP}, DIV_rhopi: {DIV_rhopi}")
+    # print(f"DIV_QP: {DIV_QP}, DIV_rhopi: {DIV_rhopi}")
     
     klinv = klInvFunction.apply
     phi_r = (DIV_QP + DIV_rhopi + torch.log((4.0 * torch.sqrt(ng)) / delta)) / ng
     phi_d = (2.0*(DIV_QP + DIV_rhopi) + torch.log((4.0 * torch.sqrt(nd)) / delta)) / nd
     
-    print(f"phi_r: {phi_r}, phi_d: {phi_d}")
+    # print(f"phi_r: {phi_r}, phi_d: {phi_d}")
     
     loss_r = klinv(emp_mv_risk, phi_r, "MAX")
     loss_d = klinv(dS_mv, phi_d, "MIN")
@@ -138,7 +140,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     loss_d = torch.max(torch.tensor(0.0).to(loss_d.device), loss_d)
     
     # Compute the C-bound
-    loss = (1.0-((1.0-2.0*loss_d)**2.0)/(1.0-2.0*loss_d))
+    loss = (1.0-((1.0-2.0*loss_r)**2.0)/(1.0-2.0*loss_d))
     
     if(torch.isnan(loss) or torch.isinf(loss)):
         loss = torch.tensor(1.0, requires_grad=True)
@@ -146,7 +148,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=1):
+def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -163,7 +165,8 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
     Returns:
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
     """
-    
+
+    print(f"{device=}")
     assert len(grisks_views) == len(dS_views)
     m = len(grisks_views[0])
     v = len(grisks_views)
@@ -182,17 +185,18 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
     prior_pi.requires_grad = False
     
     # Convert the empirical risks and disagreements to tensors
-    grisks_views = torch.from_numpy(grisks_views).to(device)
-    dS_views = torch.from_numpy(dS_views).to(device)
+    grisks_views = torch.tensor(grisks_views).to(device)
+    dS_views = torch.tensor(dS_views).to(device)
     
     all_parameters = list(posterior_Qv) + [posterior_rho]
         
     # Optimizer
     optimizer = COCOB(all_parameters)
+    # optimizer = torch.optim.Adam(all_parameters, lr=0.001, weight_decay=0.05)
 
     prev_loss = float('inf')
     # Optimisation loop
-    for i in range(max_iter):
+    for i in trange(max_iter):
         optimizer.zero_grad()
     
         # Calculating the loss
@@ -208,9 +212,9 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
             print(f"\t Convergence reached after {i} iterations")
             break
     
-        prev_loss = loss.item()  # Update the previous loss with the current lossi
+        prev_loss = loss.item()  # Update the previous loss with the current loss
         # Optional: Display the loss for monitoring
-        # print(f"Iteration: {i},\t Loss: {loss.item()}")
+        print(f"Iteration: {i},\t Loss: {loss.item()}")
 
     # After the optimization
     with torch.no_grad():
@@ -265,7 +269,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, alpha=
     loss_d = torch.max(torch.tensor(0.0).to(loss_d.device), loss_d)
     
     # Compute the C-bound
-    loss = (1.0-((1.0-2.0*loss_d)**2.0)/(1.0-2.0*loss_d))
+    loss = (1.0-((1.0-2.0*loss_r)**2.0)/(1.0-2.0*loss_d))
     
     if(torch.isnan(loss) or torch.isinf(loss)):
         loss = torch.tensor(1.0, requires_grad=True)
@@ -273,7 +277,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, alpha=
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=1):
+def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.001):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
