@@ -138,7 +138,7 @@ def compute_mv_loss(grisks_views, eS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r_max, loss_e_max, loss_r_min, loss_e_min
 
 
-def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.1):
+def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -261,7 +261,7 @@ def compute_loss(emp_risks, emp_joint_errors, posterior_Q, prior_P, ng, ne, delt
     return loss, loss_r_max, loss_e_max
 
 
-def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.1):
+def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.01):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 

@@ -4,13 +4,11 @@ scikit-learn
 pandas
 assertpy
 tqdm
-wandb
 torch
 torchvision
 dvc
 dvc-s3
-ucimlrepo
-mahotas
 pyfeats
 termcolor
 nvitop
+seaborn

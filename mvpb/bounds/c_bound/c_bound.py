@@ -8,8 +8,6 @@ import torch.nn.functional as F
 
 from ..cocob_optim import COCOB
 
-from tqdm.notebook import trange
-
 from mvpb.util import uniform_distribution
 from ..tools import (renyi_divergence as rd,
                         kl,
@@ -148,7 +146,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
+def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.001):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -196,12 +194,12 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
 
     prev_loss = float('inf')
     # Optimisation loop
-    for i in trange(max_iter):
+    for i in range(max_iter):
         optimizer.zero_grad()
     
         # Calculating the loss
         loss, constraint_risk, constraint_dis = compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, ng, nd, delta, alpha)
-        loss += log_barrier(constraint_risk-0.5)
+        loss += log_barrier(constraint_risk-0.5) + log_barrier(constraint_dis-0.5)
         loss.backward() # Backpropagation
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
@@ -320,7 +318,7 @@ def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delt
     
         # Calculating the loss
         loss, constraint_risk, constraint_disagreement = compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, alpha)
-        loss += log_barrier(constraint_risk-0.5)
+        loss += log_barrier(constraint_risk-0.5) + log_barrier(constraint_disagreement-0.5)
         loss.backward() # Backpropagation
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
