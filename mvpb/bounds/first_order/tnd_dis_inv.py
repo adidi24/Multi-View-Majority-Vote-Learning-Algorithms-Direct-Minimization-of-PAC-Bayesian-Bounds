@@ -169,7 +169,9 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
     all_parameters = list(posterior_Qv) + [posterior_rho]
         
     # Optimizer
-    optimizer = COCOB(all_parameters)
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -181,8 +183,9 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
         loss += log_barrier(constraint_joint_error-0.25) + log_barrier(constraint_disagreement-(2*(torch.sqrt(constraint_joint_error)-constraint_joint_error)))
         loss.backward() # Backpropagation
     
-        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
 
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:
@@ -282,7 +285,9 @@ def optimizeTND_DIS_inv_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05,
     all_parameters = [posterior_Q]
         
     # Optimizer
-    optimizer = COCOB(all_parameters)
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -296,6 +301,7 @@ def optimizeTND_DIS_inv_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05,
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
 
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:

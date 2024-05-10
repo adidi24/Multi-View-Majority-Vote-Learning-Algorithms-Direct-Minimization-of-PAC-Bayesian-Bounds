@@ -121,7 +121,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r, loss_d
 
 
-def optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.0001):
+def optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -163,7 +163,9 @@ def optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=10
     all_parameters = list(posterior_Qv) + [posterior_rho]
         
     # Optimizer
-    optimizer = COCOB(all_parameters)
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10,30,100], gamma=0.02)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -177,6 +179,7 @@ def optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=10
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
 
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:
@@ -241,7 +244,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, alpha=
     return loss, loss_r, loss_d
 
 
-def optimizeDIS_Inv_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.0001):
+def optimizeDIS_Inv_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.01):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -275,7 +278,9 @@ def optimizeDIS_Inv_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, del
     all_parameters = [posterior_Q]
         
     # Optimizer
-    optimizer = COCOB(all_parameters)
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.01, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -289,6 +294,7 @@ def optimizeDIS_Inv_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, del
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
 
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:

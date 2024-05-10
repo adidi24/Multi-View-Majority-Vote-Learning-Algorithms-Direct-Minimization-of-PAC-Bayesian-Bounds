@@ -139,7 +139,10 @@ def optimizeTND_mv_torch(eS_views, n, device, max_iter=1000, delta=0.05, eps=10*
         all_parameters = list(posterior_Qv) + [posterior_rho, lamb]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
-    optimizer = COCOB(all_parameters)
+    
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
 
     prev_loss = float('inf')
 
@@ -155,6 +158,8 @@ def optimizeTND_mv_torch(eS_views, n, device, max_iter=1000, delta=0.05, eps=10*
 
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
+        
         if optimise_lambda:
             lamb.data = lamb.data.clamp(0.0001, 1.9999)
         # Verify the convergence criteria of the loss
@@ -251,7 +256,9 @@ def optimizeTND_torch(eS, n, device, max_iter=1000, delta=0.05, eps=10**-9, opti
         all_parameters = [posterior_Q]
         
     # Optimizer
-    optimizer = COCOB(all_parameters)
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -265,6 +272,8 @@ def optimizeTND_torch(eS, n, device, max_iter=1000, delta=0.05, eps=10**-9, opti
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
+        
         if optimise_lambda:
             # Clamping the values of lambda
             lamb.data = lamb.data.clamp(0.0001, 1.9999)

@@ -177,7 +177,10 @@ def optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, 
         all_parameters = list(posterior_Qv) + [posterior_rho, lamb1, lamb2]
     else:
         all_parameters = list(posterior_Qv) + [posterior_rho] 
-    optimizer = COCOB(all_parameters)
+    
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
 
     prev_loss = float('inf')
 
@@ -193,6 +196,7 @@ def optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, 
 
         # torch.nn.utils.clip_grad_norm_(all_parameters, 5.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
         
         if optimise_lambdas:
             lamb1.data = lamb1.data.clamp(0.0001, 1.9999)

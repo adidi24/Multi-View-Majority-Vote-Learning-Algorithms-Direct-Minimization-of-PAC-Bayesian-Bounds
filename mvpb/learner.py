@@ -160,9 +160,11 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Q
 
         elif bound == 'TND_DIS':
-            posterior_Q = bounds.fo.optimizeTND_DIS_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb1_eS_dS, lamb2_eS_dS = bounds.fo.optimizeTND_DIS_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
             
             self.set_posteriors(posterior_Q)
+            self.lamb1_eS_dS = lamb1_eS_dS
+            self.lamb2_eS_dS = lamb2_eS_dS
             return posterior_Q
 
         elif bound == 'TND_DIS_inv':
@@ -263,7 +265,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             # Compute the TND_DIS bound for each view.
             return (bounds.fo.TND_DIS(eS, dS, ne, nd, DIV_QP),) + stats
 
-        elif bound == 'TND_DIS':
+        elif bound == 'TND_DIS_inv':
             # Compute the TND_DIS Inv bound for each view.
             return (bounds.fo.TND_DIS_Inv(eS, dS, ne, nd, DIV_QP),) + stats
 
