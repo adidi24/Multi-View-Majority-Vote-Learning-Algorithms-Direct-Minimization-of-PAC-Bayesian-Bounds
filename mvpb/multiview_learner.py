@@ -257,7 +257,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
 
     def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, alpha=1.0):
-        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND_DIS', 'TND_DIS_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
+        allowed_bounds = {'Uniform', 'PBkl', 'PBkl_inv', 'TND_DIS', 'TND_DIS_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, bound: unknown bound {bound}! expected one of {allowed_bounds}')
         
@@ -294,46 +294,52 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         _, emp_mv_risk, ng = self.mv_risk(labeled_data, incl_oob)
         _, eS, ne = self.mv_expected_joint_error(labeled_data, incl_oob)
         _, dS, nd = self.mv_expected_disagreement(ulX, incl_oob)
-        
+
+        stats = (emp_mv_risk, eS, dS, DIV_QP.item(), DIV_rhopi.item(), ng, ne, nd,)
+
+        if bound == 'Uniform':
+            # Compute the MV PB-lambda bound.
+            return (bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            
         if bound == 'PBkl':
             # Compute the MV PB-lambda bound.
-            return bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()), emp_mv_risk, -1, DIV_QP.item(), DIV_rhopi.item(), ng, -1
+            return (bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()),) + stats
             
         elif bound == 'PBkl_inv':
             # Compute the MV PB-lambda bound.
-            return bounds.fo.KLInv_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()), emp_mv_risk, -1, DIV_QP.item(), DIV_rhopi.item(), ng, -1
+            return (bounds.fo.KLInv_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()),) + stats
             
         elif bound == 'TND_DIS':
             # Compute the MV TND_DIS bound.
-            return bounds.fo.TND_DIS_MV(eS, dS, ne, nd, DIV_QP.item(), DIV_rhopi.item()), eS, dS, DIV_QP.item(), DIV_rhopi.item(), ne, nd
+            return (bounds.fo.TND_DIS_MV(eS, dS, ne, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
             
         elif bound == 'TND_DIS_inv':
             # Compute the MV TND_DIS bound.
-            return bounds.fo.TND_DIS_Inv_MV(eS, dS, ne, nd, DIV_QP.item(), DIV_rhopi.item()), eS, dS, DIV_QP.item(), DIV_rhopi.item(), ne, nd
+            return (bounds.fo.TND_DIS_Inv_MV(eS, dS, ne, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
         
         elif bound == 'TND':
             # Compute the MV TND bound.
-            return bounds.so.TND_MV(eS, ne, DIV_QP.item(), DIV_rhopi.item()), eS, -1, DIV_QP.item(), DIV_rhopi.item(), ne, -1
+            return (bounds.so.TND_MV(eS, ne, DIV_QP.item(), DIV_rhopi.item()),) + stats
 
         elif bound == 'TND_inv':
             # Compute the MV TND Inv bound.
-            return bounds.so.TND_Inv_MV(eS, ne, DIV_QP.item(), DIV_rhopi.item()), eS, -1, DIV_QP.item(), DIV_rhopi.item(), ne, -1
+            return (bounds.so.TND_Inv_MV(eS, ne, DIV_QP.item(), DIV_rhopi.item()),) + stats
             
         elif bound == 'DIS':
             # Compute the MV DIS bound for
-            return bounds.so.DIS_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()), emp_mv_risk, dS, DIV_QP.item(), DIV_rhopi.item(), ng, nd
+            return (bounds.so.DIS_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
         
         elif bound == 'DIS_inv':
             # Compute the MV DIS bound.
-            return bounds.so.DIS_Inv_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()), emp_mv_risk, dS, DIV_QP.item(), DIV_rhopi.item(), ng, nd
+            return (bounds.so.DIS_Inv_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
 
         elif bound == 'Cbound':
             # Compute the MV C-bound.
-            return bounds.cb.Cbound_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()), emp_mv_risk, dS, DIV_QP.item(), DIV_rhopi.item(), ng, nd
+            return (bounds.cb.Cbound_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
         
         elif bound == 'C_TND':
             # Compute the MV C-tandem bound.
-            return bounds.cb.C_TND_MV(emp_mv_risk, eS, ng, ne, DIV_QP.item(), DIV_rhopi.item()), emp_mv_risk, eS, DIV_QP.item(), DIV_rhopi.item(), ng, ne
+            return (bounds.cb.C_TND_MV(emp_mv_risk, eS, ng, ne, DIV_QP.item(), DIV_rhopi.item()),) + stats
         
     def set_posteriors(self, posterior_rho, posterior_Qv):
         self.posterior_rho = posterior_rho

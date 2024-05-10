@@ -113,7 +113,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         return (mvtP, util.risk(mvtP, Y)) if Y is not None else mvtP
     
     def  optimize_Q(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
-        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
+        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND_DIS', 'TND_DIS_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
         if labeled_data is None and not incl_oob:
@@ -155,6 +155,18 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
 
         elif bound == 'PBkl_inv':
             posterior_Q = bounds.fo.optimizeKLinv_torch(emp_risks, ng, device, max_iter=max_iter, alpha=alpha)
+            
+            self.set_posteriors(posterior_Q)
+            return posterior_Q
+
+        elif bound == 'TND_DIS':
+            posterior_Q = bounds.fo.optimizeTND_DIS_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
+            
+            self.set_posteriors(posterior_Q)
+            return posterior_Q
+
+        elif bound == 'TND_DIS_inv':
+            posterior_Q = bounds.fo.optimizeTND_DIS_inv_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, alpha=alpha)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
@@ -204,7 +216,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
 
     def bound(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, alpha=1.0):
-        allowed_bounds = {'PBkl', 'PBkl_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
+        allowed_bounds = {'Uniform', 'PBkl', 'PBkl_inv', 'TND_DIS', 'TND_DIS_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, bound: unknown bound {bound}! expected one of {allowed_bounds}')
         
@@ -225,47 +237,60 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         with torch.no_grad():
             prior_P = uniform_distribution(m).to(device)
             if alpha==1:
-                DIS_QP = kl(self.posterior_Q, prior_P).item()
+                DIV_QP = kl(self.posterior_Q, prior_P).item()
             else:
-                DIS_QP = rd(self.posterior_Q, prior_P, alpha).item()
+                DIV_QP = rd(self.posterior_Q, prior_P, alpha).item()
         
         emp_grisk, ng = self.gibbs_risk(labeled_data, incl_oob)
         eS, ne = self.joint_error(labeled_data, incl_oob)
         dS, nd = self.disagreement(ulX, incl_oob)
+
+        stats = (emp_grisk, eS, dS, DIV_QP, ng, ne, nd,)
         
         # print(f"{DIS_QP=},  {DIS_QP=}")
+        if bound == 'Uniform':
+            return (bounds.fo.PBkl(emp_grisk, ng, DIV_QP),) + stats
+            
         if bound == 'PBkl':
             # Compute the PB-kl bound for each view.
-            return bounds.fo.PBkl(emp_grisk, ng, DIS_QP), emp_grisk, -1, DIS_QP, ng, -1
+            return (bounds.fo.PBkl(emp_grisk, ng, DIV_QP),) + stats
 
         elif bound == 'PBkl_inv':
             # Compute the PB-kl Invbound for each view.
-            return bounds.fo.KLInv(emp_grisk, ng, DIS_QP), emp_grisk, -1, DIS_QP, ng, -1
+            return (bounds.fo.KLInv(emp_grisk, ng, DIV_QP),) + stats
+
+        elif bound == 'TND_DIS':
+            # Compute the TND_DIS bound for each view.
+            return (bounds.fo.TND_DIS(eS, dS, ne, nd, DIV_QP),) + stats
+
+        elif bound == 'TND_DIS':
+            # Compute the TND_DIS Inv bound for each view.
+            return (bounds.fo.TND_DIS_Inv(eS, dS, ne, nd, DIV_QP),) + stats
 
         elif bound == 'TND':
             # Compute the TND bound for each view.
-            return bounds.so.TND(eS, ne, DIS_QP), eS, -1, DIS_QP, ne, -1
+            return (bounds.so.TND(eS, ne, DIV_QP),) + stats
 
         elif bound == 'TND_inv':
             # Compute the TND Inv bound for each view.
-            return bounds.so.TND_Inv(eS, ne, DIS_QP), eS, -1, DIS_QP, ne, -1
+            return (bounds.so.TND_Inv(eS, ne, DIV_QP),) + stats
             
         elif bound == 'DIS':
             # Compute the DIS bound for each view.
-            return bounds.so.DIS(emp_grisk, dS, ng, nd, DIS_QP), emp_grisk, dS, DIS_QP, ng, nd
+            return (bounds.so.DIS(emp_grisk, dS, ng, nd, DIV_QP),) + stats
         
         elif bound == 'DIS_inv':
             # Compute the DIS Inv bound for each view.
-            return bounds.so.DIS_Inv(emp_grisk, dS, ng, nd, DIS_QP), emp_grisk, dS, DIS_QP, ng, nd
+            return (bounds.so.DIS_Inv(emp_grisk, dS, ng, nd, DIV_QP),) + stats
         
         elif bound == 'Cbound':
             # Compute the C-bound bound for each view.
-            return bounds.cb.Cbound(emp_grisk, dS, ng, nd, DIS_QP), emp_grisk, dS, DIS_QP, ng, nd
+            return (bounds.cb.Cbound(emp_grisk, dS, ng, nd, DIV_QP),) + stats
         
         elif bound == 'C_TND':
             # Compute the C-tandem bound bound for each view.
             
-            return bounds.cb.C_TND(emp_grisk, eS, ng, ne, DIS_QP), emp_grisk, eS, DIS_QP, ng, ne
+            return (bounds.cb.C_TND(emp_grisk, eS, ng, ne, DIV_QP),) + stats
         
     def set_posteriors(self, posterior_Q):
         self.posterior_Q = posterior_Q

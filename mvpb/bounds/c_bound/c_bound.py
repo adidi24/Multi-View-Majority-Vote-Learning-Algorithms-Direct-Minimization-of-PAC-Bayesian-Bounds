@@ -148,7 +148,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
+def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.001):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -204,7 +204,7 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
         loss += log_barrier(constraint_risk-0.5) + log_barrier(constraint_dis-0.5)
         loss.backward() # Backpropagation
     
-        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
 
         # Verify the convergence criteria of the loss
@@ -277,7 +277,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, alpha=
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.1):
+def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.001):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -323,7 +323,7 @@ def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delt
         loss += log_barrier(constraint_risk-0.5) + log_barrier(constraint_disagreement-0.5)
         loss.backward() # Backpropagation
     
-        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
 
         # Verify the convergence criteria of the loss

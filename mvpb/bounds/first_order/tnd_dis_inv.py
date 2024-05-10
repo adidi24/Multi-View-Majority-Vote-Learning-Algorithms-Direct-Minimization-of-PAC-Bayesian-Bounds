@@ -126,7 +126,7 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
     return loss, loss_e, loss_d
 
 
-def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=1):
+def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -181,7 +181,7 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
         loss += log_barrier(constraint_joint_error-0.25) + log_barrier(constraint_disagreement-(2*(torch.sqrt(constraint_joint_error)-constraint_joint_error)))
         loss.backward() # Backpropagation
     
-        # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
+        torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
 
         # Verify the convergence criteria of the loss
@@ -246,10 +246,10 @@ def compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, alpha=1.1):
 
     loss = 2.0*loss_e + loss_d
 
-    return loss
+    return loss, loss_e, loss_d
 
 
-def optimizeTND_DIS_inv_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1):
+def optimizeTND_DIS_inv_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -267,6 +267,7 @@ def optimizeTND_DIS_inv_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05,
     """
     
     m = len(eS)
+    log_barrier = lbf(t)
     
     # Initialisation with the uniform distribution
     prior_P = uniform_distribution(m).to(device)
@@ -289,7 +290,8 @@ def optimizeTND_DIS_inv_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05,
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, alpha)
+        loss, constraint_joint_error, constraint_disagreement = compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, alpha)
+        loss += log_barrier(constraint_joint_error-0.25) + log_barrier(constraint_disagreement-(2*(torch.sqrt(constraint_joint_error)-constraint_joint_error)))
         loss.backward() # Backpropagation
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
