@@ -261,7 +261,7 @@ def compute_loss(emp_risks, emp_joint_errors, posterior_Q, prior_P, ng, ne, delt
     return loss, loss_r_max, loss_e_max
 
 
-def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.01):
+def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.1):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 

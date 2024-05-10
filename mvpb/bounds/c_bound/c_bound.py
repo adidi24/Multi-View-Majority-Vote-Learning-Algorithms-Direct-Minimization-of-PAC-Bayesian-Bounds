@@ -8,6 +8,8 @@ import torch.nn.functional as F
 
 from ..cocob_optim import COCOB
 
+from tqdm import tqdm
+
 from mvpb.util import uniform_distribution
 from ..tools import (renyi_divergence as rd,
                         kl,
@@ -146,7 +148,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.001):
+def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -212,7 +214,7 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
     
         prev_loss = loss.item()  # Update the previous loss with the current loss
         # Optional: Display the loss for monitoring
-        print(f"Iteration: {i},\t Loss: {loss.item()}")
+        # print(f"Iteration: {i},\t Loss: {loss.item()}")
 
     # After the optimization
     with torch.no_grad():
@@ -275,7 +277,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, alpha=
     return loss, loss_r, loss_d
 
 
-def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.001):
+def optimizeCBound_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.1):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 

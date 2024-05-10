@@ -111,7 +111,7 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
     return 2.0*loss, loss
 
 
-def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=1):
+def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 

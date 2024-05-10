@@ -137,39 +137,17 @@ def renyi_divergence(Q, P, alpha):
 
 ###############################################################################
 def kl_inv(q, epsilon, mode, tol=1e-9, nb_iter_max=1000):
-    """
-    Solve the optimization problem min{ p in [0, 1] | kl(q||p) <= epsilon }
-    or max{ p in [0,1] | kl(q||p) <= epsilon } for q and epsilon fixed using PyTorch
-
-    Args:
-        q (float or torch.Tensor): The parameter q of the kl divergence
-        epsilon (float or torch.Tensor): The upper bound on the kl divergence
-        tol (float, optional): The precision tolerance of the solution
-        nb_iter_max (int, optional): The maximum number of iterations
-    """
     assert mode == "MIN" or mode == "MAX"
     q = torch.tensor(q, dtype=torch.float)
     epsilon = torch.tensor(epsilon, dtype=torch.float)
     assert q >= 0 and q <= 1
     assert epsilon > 0.0
 
-    def kl(q, p):
-        """
-        Compute the KL divergence between two Bernoulli distributions
-        (denoted kl divergence) using PyTorch
-
-        Parameters
-        ----------
-        q: torch.Tensor
-            The parameter of the posterior Bernoulli distribution
-        p: torch.Tensor
-            The parameter of the prior Bernoulli distribution
-        """
+    def kl(p):
         return q * torch.log(q / p) + (1 - q) * torch.log((1 - q) / (1 - p))
 
-    # We optimize the problem with the bisection method
     if mode == "MAX":
-        p_max = 1.0
+        p_max = torch.tensor(1.0, dtype=torch.float)
         p_min = q
     else:
         p_max = q
@@ -178,22 +156,20 @@ def kl_inv(q, epsilon, mode, tol=1e-9, nb_iter_max=1000):
     for _ in range(nb_iter_max):
         p = (p_min + p_max) / 2.0
 
-        if kl(q, p) == epsilon or (p_max - p_min) / 2.0 < tol:
-            return p.item()
+        kl_value = kl(p)
+        if torch.allclose(kl_value, epsilon, atol=tol) or (p_max - p_min) / 2.0 < tol:
+            return p
 
-        if mode == "MAX" and kl(q, p) > epsilon:
+        if mode == "MAX" and kl_value > epsilon:
             p_max = p
-        elif mode == "MAX" and kl(q, p) < epsilon:
+        elif mode == "MAX" and kl_value < epsilon:
             p_min = p
-        elif mode == "MIN" and kl(q, p) > epsilon:
+        elif mode == "MIN" and kl_value > epsilon:
             p_min = p
-        elif mode == "MIN" and kl(q, p) < epsilon:
+        elif mode == "MIN" and kl_value < epsilon:
             p_max = p
 
-    return p.item()
-
-
-###############################################################################
+    return p
 
 
 class klInvFunction(torch.autograd.Function):
@@ -206,13 +182,8 @@ class klInvFunction(torch.autograd.Function):
                 and len(epsilon.shape) == 0 and epsilon > 0.0)
         ctx.save_for_backward(q, epsilon)
 
-        # We solve the optimization problem to find the optimal p
         out = kl_inv(q.item(), epsilon.item(), mode)
-
-        if(out < 0.0):
-            out = 10.0**-9
-
-        out = torch.tensor(out, device=q.device)
+        out = torch.clamp(out, min=1e-9, max=1.0 - 1e-9)
         ctx.out = out
         ctx.mode = mode
         return out
@@ -223,16 +194,13 @@ class klInvFunction(torch.autograd.Function):
         grad_q = None
         grad_epsilon = None
 
-        # We compute the gradient with respect to q and epsilon
-        # (see [1])
+        term_1 = (1.0 - q) / (1.0 - ctx.out)
+        term_2 = q / ctx.out
 
-        term_1 = (1.0-q)/(1.0-ctx.out)
-        term_2 = (q/ctx.out)
+        grad_q = torch.log(term_1 / term_2) / (term_1 - term_2)
+        grad_epsilon = 1.0 / (term_1 - term_2)
 
-        grad_q = torch.log(term_1/term_2)/(term_1-term_2)
-        grad_epsilon = (1.0)/(term_1-term_2)
-
-        return grad_output*grad_q, grad_output*grad_epsilon, None
+        return grad_output * grad_q, grad_output * grad_epsilon, None
 
 # References:
 # [1] Learning Gaussian Processes by Minimizing PAC-Bayesian
