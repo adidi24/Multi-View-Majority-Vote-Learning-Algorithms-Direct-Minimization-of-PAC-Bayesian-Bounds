@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader,Dataset
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+from tqdm.notebook import trange
+
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.utils.multiclass import unique_labels
 from sklearn.base import BaseEstimator, ClassifierMixin
@@ -144,7 +146,7 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
 
         # set up DataLoader for training set
         dataset = Dataset(self.X_, self.y_)
-        loader = DataLoader(dataset, shuffle=True, batch_size=32, pin_memory=True)
+        loader = DataLoader(dataset, shuffle=True, batch_size=256)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-5)
 
         self.model.train()

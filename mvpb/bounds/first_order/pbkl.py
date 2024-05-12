@@ -234,10 +234,10 @@ def compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb=None, alpha=1):
 
     loss = emp_risk / (1.0 - lamb / 2.0) + (DIV_QP +  torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return 2.0*loss
+    return 2.0*loss, loss
 
 
-def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, optimise_lambda=False):
+def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, optimise_lambda=False, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -254,6 +254,7 @@ def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**
     """
     
     m = len(emp_risks)
+    log_barrier = lbf(t)
     
     # Initialisation with the uniform distribution
     prior_P = uniform_distribution(m).to(device)
@@ -287,8 +288,8 @@ def optimizeLamb_torch(emp_risks, n, device, max_iter=1000, delta=0.05, eps=10**
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb, alpha)
-    
+        loss, constraint = compute_loss(emp_risks, posterior_Q, prior_P, n, delta, lamb, alpha)
+        loss = loss + log_barrier(constraint-0.5)
         loss.backward() # Backpropagation
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)

@@ -130,7 +130,8 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
                      incl_oob=True,
                      max_iter=1000,
                      optimise_lambda_gamma=False,
-                     alpha=1):
+                     alpha=1,
+                     t=100):
         """
         Optimize the value of rho (hyper-posterior distribution) and Q (posterior distribution)
         based on the specified bound.
@@ -185,7 +186,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
 
         
         if bound == 'PBkl':
-            posterior_Qv, posterior_rho, lamb = bounds.fo.optimizeLamb_mv_torch(grisks_views, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+            posterior_Qv, posterior_rho, lamb = bounds.fo.optimizeLamb_mv_torch(grisks_views, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha, t=t)
             
             # print(f"{lamb=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -193,13 +194,13 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Qv, posterior_rho
 
         elif bound == 'PBkl_inv':
-            posterior_Qv, posterior_rho = bounds.fo.optimizeKLinv_mv_torch(grisks_views, ng, device, max_iter=max_iter, alpha=alpha)
+            posterior_Qv, posterior_rho = bounds.fo.optimizeKLinv_mv_torch(grisks_views, ng, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND_DIS':
-            posterior_Qv, posterior_rho, lamb1_eS_dS, lamb2_eS_dS = bounds.fo.optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
+            posterior_Qv, posterior_rho, lamb1_eS_dS, lamb2_eS_dS = bounds.fo.optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb1_eS_dS = lamb1_eS_dS
@@ -207,13 +208,13 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND_DIS_inv':
-            posterior_Qv, posterior_rho = bounds.fo.optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, alpha=alpha)
+            posterior_Qv, posterior_rho = bounds.fo.optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND':
-            posterior_Qv, posterior_rho, lamb_eS = bounds.so.optimizeTND_mv_torch(eS_views, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+            posterior_Qv, posterior_rho, lamb_eS = bounds.so.optimizeTND_mv_torch(eS_views, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha, t=t)
             
             # print(f"{lamb_eS=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -221,13 +222,13 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Qv, posterior_rho
 
         elif bound == 'TND_inv':
-            posterior_Qv, posterior_rho= bounds.so.optimizeTND_Inv_mv_torch(eS_views, ne, device, max_iter=max_iter, alpha=alpha)
+            posterior_Qv, posterior_rho= bounds.so.optimizeTND_Inv_mv_torch(eS_views, ne, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
         elif bound == 'DIS':
-            posterior_Qv, posterior_rho, lamb_dS, gamma_dS = bounds.so.optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
+            posterior_Qv, posterior_rho, lamb_dS, gamma_dS = bounds.so.optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha, t=t)
             
             # print(f"{lamb_dS=}, {gamma_dS=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
@@ -236,19 +237,19 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Qv, posterior_rho
         
         elif bound == 'DIS_inv':
-            posterior_Qv, posterior_rho = bounds.so.optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha)
+            posterior_Qv, posterior_rho = bounds.so.optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
         elif bound == 'Cbound':
-            posterior_Qv, posterior_rho = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha)
+            posterior_Qv, posterior_rho = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
         
         elif bound == 'C_TND':
-            posterior_Qv, posterior_rho = bounds.cb.optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=max_iter, alpha=alpha)
+            posterior_Qv, posterior_rho = bounds.cb.optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho

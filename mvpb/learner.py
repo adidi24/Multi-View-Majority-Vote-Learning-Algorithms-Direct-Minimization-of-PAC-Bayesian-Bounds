@@ -112,7 +112,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
         return (mvtP, util.risk(mvtP, Y)) if Y is not None else mvtP
     
-    def  optimize_Q(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1):
+    def  optimize_Q(self, bound, labeled_data=None, unlabeled_data=None, incl_oob=True, max_iter=1000, optimise_lambda_gamma=False, alpha=1, t=100):
         allowed_bounds = {'PBkl', 'PBkl_inv', 'TND_DIS', 'TND_DIS_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND'}
         if bound not in allowed_bounds:
             raise Exception(f'Warning, optimize_Q: unknown bound {bound}! expected one of {allowed_bounds}')
@@ -146,7 +146,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         
         if bound == 'PBkl':
 
-            posterior_Q, lamb = bounds.fo.optimizeLamb_torch(emp_risks, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb = bounds.fo.optimizeLamb_torch(emp_risks, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha, t=t)
             
             # print(f"{lamb=}")
             self.set_posteriors(posterior_Q)
@@ -154,13 +154,13 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Q
 
         elif bound == 'PBkl_inv':
-            posterior_Q = bounds.fo.optimizeKLinv_torch(emp_risks, ng, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.fo.optimizeKLinv_torch(emp_risks, ng, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
 
         elif bound == 'TND_DIS':
-            posterior_Q, lamb1_eS_dS, lamb2_eS_dS = bounds.fo.optimizeTND_DIS_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb1_eS_dS, lamb2_eS_dS = bounds.fo.optimizeTND_DIS_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             self.lamb1_eS_dS = lamb1_eS_dS
@@ -168,13 +168,13 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Q
 
         elif bound == 'TND_DIS_inv':
-            posterior_Q = bounds.fo.optimizeTND_DIS_inv_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.fo.optimizeTND_DIS_inv_torch(emp_joint_errors, emp_disagreements, ne, nd, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
         
         elif bound == 'TND':
-            posterior_Q, lamb_eS = bounds.so.optimizeTND_torch(emp_joint_errors, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb_eS = bounds.so.optimizeTND_torch(emp_joint_errors, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha, t=t)
             
             # print(f"{lamb_eS=}")
             self.set_posteriors(posterior_Q)
@@ -182,13 +182,13 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Q
 
         elif bound == 'TND_inv':
-            posterior_Q = bounds.so.optimizeTND_Inv_torch(emp_joint_errors, ne, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.so.optimizeTND_Inv_torch(emp_joint_errors, ne, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
         
         elif bound == 'DIS':
-            posterior_Q, lamb_dS, gamma_dis = bounds.so.optimizeDIS_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha)
+            posterior_Q, lamb_dS, gamma_dis = bounds.so.optimizeDIS_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha, t=t)
             
             # print(f"{lamb_dS=}, {gamma_dis=}")
             self.set_posteriors(posterior_Q)
@@ -197,19 +197,19 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Q
         
         elif bound == 'DIS_inv':
-            posterior_Q = bounds.so.optimizeDIS_Inv_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.so.optimizeDIS_Inv_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
 
         elif bound == 'Cbound':
-            posterior_Q = bounds.cb.optimizeCBound_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.cb.optimizeCBound_torch(emp_risks, emp_disagreements, ng, nd, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q
 
         elif bound == 'C_TND':
-            posterior_Q = bounds.cb.optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=max_iter, alpha=alpha)
+            posterior_Q = bounds.cb.optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=max_iter, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_Q)
             return posterior_Q

@@ -97,10 +97,10 @@ def compute_mv_loss(eS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n
     
     loss = eS_mv / (1.0 - lamb / 2.0) + (2*(DIV_QP + DIV_rhopi) + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return 4.0*loss
+    return 4.0*loss, loss
 
 
-def optimizeTND_mv_torch(eS_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1):
+def optimizeTND_mv_torch(eS_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=100):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -117,6 +117,7 @@ def optimizeTND_mv_torch(eS_views, n, device, max_iter=1000, delta=0.05, eps=10*
     
     m = len(eS_views[0, 0])
     v = len(eS_views)
+    log_barrier = lbf(t)
     
     # Initialisation with the uniform distribution
     prior_Pv = [uniform_distribution(m).to(device)]*v
@@ -153,8 +154,8 @@ def optimizeTND_mv_torch(eS_views, n, device, max_iter=1000, delta=0.05, eps=10*
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_mv_loss(eS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
-    
+        loss, constraint_joint_error = compute_mv_loss(eS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
+        loss += log_barrier(constraint_joint_error-0.25)
         loss.backward() # Backpropagation
 
 
@@ -217,10 +218,10 @@ def compute_loss(eS, posterior_Q, prior_P, n, delta, lamb=None, alpha=1):
     
     loss = eS / (1.0 - lamb / 2.0) + (2*DIV_QP + torch.log((2.0 * torch.sqrt(n)) / delta)) / (lamb * (1.0 - lamb / 2.0) * n)
     
-    return 4.0*loss
+    return 4.0*loss, loss
 
 
-def optimizeTND_torch(eS, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1):
+def optimizeTND_torch(eS, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -236,6 +237,7 @@ def optimizeTND_torch(eS, n, device, max_iter=1000, delta=0.05, eps=10**-9, opti
     """
     
     m = len(eS)
+    log_barrier = lbf(t)
     
     # Initialisation with the uniform distribution
     prior_P = uniform_distribution(m).to(device)
@@ -269,8 +271,8 @@ def optimizeTND_torch(eS, n, device, max_iter=1000, delta=0.05, eps=10**-9, opti
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(eS, posterior_Q, prior_P, n, delta, lamb, alpha)
-    
+        loss, constraint_joint_error = compute_loss(eS, posterior_Q, prior_P, n, delta, lamb, alpha)
+        loss += log_barrier(constraint_joint_error-0.25)
         loss.backward() # Backpropagation
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
