@@ -298,7 +298,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         self.posterior_Q = posterior_Q
     
     def clear_posteriors(self):
-        self.posterior_Q = uniform_distribution(self.nb_estimators)
+        self.posterior_Q = uniform_distribution(self.nb_estimators).to(device)
 
 
     def gibbs_risk(self, labeled_data=None, incl_oob=True):

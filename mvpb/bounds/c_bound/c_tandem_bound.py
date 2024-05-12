@@ -94,8 +94,10 @@ def compute_mv_loss(grisks_views, eS_views, posterior_Qv, posterior_rho, prior_P
     nb_views = len(grisks_views)
      
     # Apply softmax to ensure that the weights are probability distributions
-    softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
-    softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
+    log_softmax_posterior_Qv = [F.log_softmax(q, dim=0) for q in posterior_Qv]
+    softmax_posterior_Qv = [torch.exp(q) for q in log_softmax_posterior_Qv]
+    log_softmax_posterior_rho = F.log_softmax(posterior_rho, dim=0)
+    softmax_posterior_rho = torch.exp(log_softmax_posterior_rho)
 
     # Compute the empirical risk
     emp_risks = [torch.sum(view * q) for view, q in zip(grisks_views, softmax_posterior_Qv)]
@@ -138,7 +140,7 @@ def compute_mv_loss(grisks_views, eS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r_max, loss_e_max, loss_r_min, loss_e_min
 
 
-def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=0.01):
+def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=100):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -181,6 +183,8 @@ def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000,
         
     # Optimizer
     optimizer = COCOB(all_parameters)
+    #optimizer = torch.optim.SGD(all_parameters, lr=0.1, momentum=0.9)
+    #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -194,7 +198,8 @@ def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000,
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
-
+        #scheduler.step()
+        
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:
             print(f"\t Convergence reached after {i} iterations")
@@ -231,7 +236,8 @@ def compute_loss(emp_risks, emp_joint_errors, posterior_Q, prior_P, ng, ne, delt
 
      """
     # Apply softmax to ensure that the weights are probability distributions
-    softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
+    log_softmax_posterior_Q = F.log_softmax(posterior_Q, dim=0)
+    softmax_posterior_Q = torch.exp(log_softmax_posterior_Q)
     
     # Compute the empirical risk
     emp_risk = torch.sum(emp_risks * softmax_posterior_Q)
@@ -261,7 +267,7 @@ def compute_loss(emp_risks, emp_joint_errors, posterior_Q, prior_P, ng, ne, delt
     return loss, loss_r_max, loss_e_max
 
 
-def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=0.1):
+def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -295,9 +301,9 @@ def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=100
     all_parameters = [posterior_Q]
         
     # Optimizer
-    # optimizer = COCOB(all_parameters)
-    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
+    optimizer = COCOB(all_parameters)
+    #optimizer = torch.optim.SGD(all_parameters, lr=0.1, momentum=0.9)
+    #scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -311,7 +317,7 @@ def optimizeCTND_torch(emp_risks, emp_joint_errors, ng, ne, device, max_iter=100
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
-        scheduler.step()
+        #scheduler.step()
 
         # Verify the convergence criteria of the loss
         if torch.abs(prev_loss - loss).item() <= eps:

@@ -87,8 +87,10 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
     nb_views = len(eS_views)
     
     # Apply softmax to ensure that the weights are probability distributions
-    softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
-    softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
+    log_softmax_posterior_Qv = [F.log_softmax(q, dim=0) for q in posterior_Qv]
+    softmax_posterior_Qv = [torch.exp(q) for q in log_softmax_posterior_Qv]
+    log_softmax_posterior_rho = F.log_softmax(posterior_rho, dim=0)
+    softmax_posterior_rho = torch.exp(log_softmax_posterior_rho)
 
     # Compute the empirical joint error
     eS_v = torch.zeros((nb_views, nb_views), device=eS_views.device)
@@ -125,7 +127,7 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
     return loss, loss_term_e, loss_term_d
 
 
-def optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1.1,t=1):
+def optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1.1,t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -180,7 +182,7 @@ def optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, 
     
     # optimizer = COCOB(all_parameters)
     optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150,250], gamma=0.02)
 
     prev_loss = float('inf')
 
@@ -241,7 +243,8 @@ def compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, lamb1=None, lamb2=
     
 
     # Apply softmax to ensure that the weights are probability distributions
-    softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
+    log_softmax_posterior_Q = F.log_softmax(posterior_Q, dim=0)
+    softmax_posterior_Q = torch.exp(log_softmax_posterior_Q)
     
     # Compute the empirical joint error
     eS = torch.sum(torch.sum(eS * softmax_posterior_Q, dim=0) * softmax_posterior_Q)
@@ -265,10 +268,10 @@ def compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, lamb1=None, lamb2=
 
     loss = 2.0*loss_term1 + loss_term2
     
-    return loss
+    return loss, loss_term1, loss_term2
 
 
-def optimizeTND_DIS_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1):
+def optimizeTND_DIS_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambdas=False, alpha=1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -286,6 +289,8 @@ def optimizeTND_DIS_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps
     """
     
     m = len(eS)
+
+    log_barrier = lbf(t)
     
     # Initialisation with the uniform distribution
     prior_P = uniform_distribution(m).to(device)
@@ -315,7 +320,9 @@ def optimizeTND_DIS_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps
         all_parameters = [posterior_Q]
         
     # Optimizer
-    optimizer = COCOB(all_parameters)
+    # optimizer = COCOB(all_parameters)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150,250], gamma=0.02)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -323,12 +330,14 @@ def optimizeTND_DIS_torch(eS, dS, ne, nd, device, max_iter=1000, delta=0.05, eps
         optimizer.zero_grad()
     
         # Calculating the loss
-        loss = compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, lamb1, lamb2, alpha)
-    
+        loss, constraint_joint_error, constraint_disagreement = compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, lamb1, lamb2, alpha)
+        loss += log_barrier(constraint_joint_error-0.25) + log_barrier(constraint_disagreement-(2*(torch.sqrt(constraint_joint_error)-constraint_joint_error)))
         loss.backward() # Backpropagation
     
         # torch.nn.utils.clip_grad_norm_(all_parameters, 1.0)
         optimizer.step() # Update the parameters
+        scheduler.step()
+        
         if optimise_lambdas:
             # Clamping the values of lambdas
             lamb1.data = lamb1.data.clamp(0.0001, 1.9999)

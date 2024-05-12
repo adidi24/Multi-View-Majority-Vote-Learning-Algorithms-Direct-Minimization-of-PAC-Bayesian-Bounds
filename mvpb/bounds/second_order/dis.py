@@ -84,8 +84,10 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     nb_views = len(grisks_views)
      
     # Apply softmax to ensure that the weights are probability distributions
-    softmax_posterior_Qv = [F.softmax(q, dim=0) for q in posterior_Qv]
-    softmax_posterior_rho = F.softmax(posterior_rho, dim=0)
+    log_softmax_posterior_Qv = [F.log_softmax(q, dim=0) for q in posterior_Qv]
+    softmax_posterior_Qv = [torch.exp(q) for q in log_softmax_posterior_Qv]
+    log_softmax_posterior_rho = F.log_softmax(posterior_rho, dim=0)
+    softmax_posterior_rho = torch.exp(log_softmax_posterior_rho)
 
     # Compute the empirical risk
     emp_risks = [torch.sum(view * q) for view, q in zip(grisks_views, softmax_posterior_Qv)]
@@ -119,7 +121,7 @@ def compute_mv_loss(grisks_views, dS_views, posterior_Qv, posterior_rho, prior_P
     return loss, dis_term, phi
 
 
-def optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda_gamma=False, alpha=1.1, t=0.01):
+def optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda_gamma=False, alpha=1.1, t=100):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -177,7 +179,7 @@ def optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=1000, 
     # Optimizer
     # optimizer = COCOB(all_parameters)
     optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150,250], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop
@@ -235,7 +237,8 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, lamb=N
 
      """
     # Apply softmax to ensure that the weights are probability distributions
-    softmax_posterior_Q = F.softmax(posterior_Q, dim=0)
+    log_softmax_posterior_Q = F.log_softmax(posterior_Q, dim=0)
+    softmax_posterior_Q = torch.exp(log_softmax_posterior_Q)
     
     # Compute the empirical risk
     emp_risk = torch.sum(emp_risks * softmax_posterior_Q)
@@ -262,7 +265,7 @@ def compute_loss(emp_risks, emp_dis, posterior_Q, prior_P, ng, nd, delta, lamb=N
     return loss, phi, dis_term
 
 
-def optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda_gamma=False, alpha=1, t=0.01):
+def optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda_gamma=False, alpha=1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -314,7 +317,7 @@ def optimizeDIS_torch(emp_risks, emp_dis, ng, nd, device, max_iter=1000, delta=0
     # Optimizer
     # optimizer = COCOB(all_parameters)
     optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,100], gamma=0.01)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150,250], gamma=0.01)
 
     prev_loss = float('inf')
     # Optimisation loop

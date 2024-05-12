@@ -346,8 +346,8 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         self.posterior_Qv = posterior_Qv
     
     def clear_posteriors(self):
-        self.posterior_rho = uniform_distribution(self.nb_views)
-        self.posterior_Qv = [uniform_distribution(self.nb_estimators) for _ in range(self.nb_views)]
+        self.posterior_rho = uniform_distribution(self.nb_views).to(device)
+        self.posterior_Qv = [uniform_distribution(self.nb_estimators).to(device) for _ in range(self.nb_views)]
 
     def risks(self, data=None, incl_oob=True):
         check_is_fitted(self)
