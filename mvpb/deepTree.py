@@ -147,7 +147,7 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         # set up DataLoader for training set
         dataset = Dataset(self.X_, self.y_)
         loader = DataLoader(dataset, shuffle=True, batch_size=256)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001, weight_decay=1e-5)
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.001, weight_decay=0.05)
 
         self.model.train()
         for epoch in range(self.epochs):

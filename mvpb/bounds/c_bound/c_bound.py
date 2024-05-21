@@ -198,8 +198,8 @@ def optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=100
     # Optimizer
     # optimizer = COCOB(all_parameters)
     # optimizer = torch.optim.AdamW(all_parameters, lr=0.01, weight_decay=0.05)
-    optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150,250], gamma=0.02)
+    optimizer = torch.optim.AdamW(all_parameters, lr=0.01, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80,150,250], gamma=0.002)
 
     prev_loss = float('inf')
     # Optimisation loop
