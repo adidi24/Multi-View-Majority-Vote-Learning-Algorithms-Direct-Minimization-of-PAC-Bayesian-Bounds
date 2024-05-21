@@ -58,20 +58,12 @@ dvc pull
 
 ## Running Experiments
 
-Switch to the exp branch and then run the cells in the following notebooks:
+Run the cells in the following notebooks:
 - empirical-evaluation-jupyter.ipynb to reproduce the main experiments.
 - empirical-evaluation-dist.ipynb to reproduce the experiments used to compare distributions (before and after adding Gaussian noise to the data).
 - plot.ipynb to reproduce all the plots in the paper.
 
-> All our results can also be found in .csv format under the results directory in the exp branch.
-> We will move the results later to DAGsHub storage.
-
-Switch to the exp branch and then run the cells in the following notebooks:
-- empirical-evaluation-jupyter.ipynb to reproduce the main experiments.
-- empirical-evaluation-dist.ipynb to reproduce the experiments used to compare distributions (before and after adding Gaussian noise to the data).
-- plot.ipynb to reproduce all the plots in the paper.
-
-> All our results can also be found in .csv format under the results directory in the exp branch.
+> All our results can also be found in .csv format under the results directory.
 > We will move the results later to DAGsHub storage.
 
 ## Acknowledgements
