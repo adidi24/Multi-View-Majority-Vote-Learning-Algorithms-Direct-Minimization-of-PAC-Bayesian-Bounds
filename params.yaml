@@ -1,7 +1,8 @@
 nb_runs: 20
-nb_epochs: 100
+nb_epochs: 50
 max_iter: 1000
 
+use_dndf: True
 nb_estimators: 100
 depth: 3
 optimize_lambda_gamma: True
@@ -11,6 +12,7 @@ use_unlabeled: True
 to_binary: None # One of ["ovr", "ovo", "other",  None]
 label_1: 0
 label_2: 1
+poison: False
 
-bounds: ['TND_DIS', 'TND', 'DIS', 'Lambda', 'PBkl']
+bounds:['Uniform', 'PBkl', 'PBkl_inv', 'TND_DIS', 'TND_DIS_inv', 'TND', 'TND_inv', 'DIS', 'DIS_inv', 'Cbound', 'C_TND']
 

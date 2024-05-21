@@ -243,7 +243,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return posterior_Qv, posterior_rho
         
         elif bound == 'Cbound':
-            posterior_Qv, posterior_rho = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha, t=1)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             return posterior_Qv, posterior_rho
