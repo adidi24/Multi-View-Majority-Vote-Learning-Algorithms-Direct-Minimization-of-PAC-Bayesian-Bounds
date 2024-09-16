@@ -102,7 +102,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         check_is_fitted(self)
         
         rho = self.posterior_rho.cpu().data.numpy()
-        posteriors_qs = [p.cpu().data for p in self.posterior_Qv]
+        posteriors_qs = [p.cpu().data.numpy() for p in self.posterior_Qv]
         
         for i in range(self.nb_views):
             if Y is not None:
@@ -118,6 +118,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         mys = []
         for v in range(self.nb_views):
             mys.append([est.predict(Xs[v]).astype(int) for est in self._estimators_views[v]])
+        
         mvP = util.MV_preds(rho, np.array(posteriors_qs), mys)
 
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
