@@ -22,7 +22,6 @@ pip3 install -r requirements.txt
 
 ### Downloading the datasets
 
-Datasets can be downloaded  at [Open Science Framework](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141). Put them in the `data` dir.
 
 | Dataset Name      | Original Location | Already Multiview | Number of Views | Number of Samples | Number of Classes | Size    |
 |-------------------|-----------------|-------------------|-----------------|-------------------|-------------------|---------|
@@ -41,7 +40,7 @@ Datasets can be downloaded  at [Open Science Framework](https://osf.io/xh5qs/?vi
 | PTB-XL-plus         | [PTB-XL+](https://physionet.org/content/ptb-xl-plus/1.0.1/)        | Yes      | 3               | 21800               | 5 Superclasses                 | 248 MB   |
 | ReutersEN         | [ReutersEN](http://membres-lig.imag.fr/grimal/)        | Yes      | 5               | 1200               | 6                 | 22,1 MB   |
 
-> After the paper is published and the code is released, datasets can be pulled using DVC, and the files can be browsed on DagsHub storage.
+> Datasets can be pulled using DVC, and the files can be browsed on [DagsHub](https://dagshub.com/adidi24/Multi-View-Majority-Vote-Learning-Algorithms-Direct-Minimization-of-PAC-Bayesian-Bounds) storage.
 
 For DVC setup, use the following commands:
 
