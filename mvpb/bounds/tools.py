@@ -135,6 +135,25 @@ def renyi_divergence(Q, P, alpha):
 
     return divergence
 
+def renyi_divergence_numpy(Q, P, alpha):
+    """
+    Compute the Renyi divergence between two probability distributions.
+
+    Args:
+        Q (np.array): The first probability distribution.
+        P (np.array): The second probability distribution.
+        alpha (float): The parameter for Renyi divergence.
+
+    Returns:
+        np.array: The Renyi divergence between Q and P.
+    """
+    assert len(Q) == len(P), "Distributions must have the same size"
+
+    # Compute the Renyi divergence
+    divergence = np.log(np.sum(np.power(P, alpha) * np.power(Q, 1 - alpha)))
+
+    return divergence
+
 ###############################################################################
 def kl_inv(q, epsilon, mode, tol=1e-9, nb_iter_max=1000):
     assert mode == "MIN" or mode == "MAX"

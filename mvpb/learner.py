@@ -12,7 +12,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # import mvpb.bounds_alpha1_KL as bkl
 import mvpb.bounds as bounds
 import mvpb.util as util
-from .bounds.tools import renyi_divergence as rd, kl
+from .bounds.tools import renyi_divergence as rd, renyi_divergence_numpy as rd_np, kl, KL as kl_np
 from .util import uniform_distribution
 
 from .deepTree import DeepNeuralDecisionForests
@@ -99,15 +99,13 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         """
         check_is_fitted(self)
         
-        Q = self.posterior_Q.cpu().data.numpy()
-        
         if Y is not None:
             Xs, Y = check_X_y(Xs, Y)
         else:
             Xs = check_array(Xs)
 
         P = [est.predict(Xs).astype(int) for est in self._estimators]
-        mvtP = util.mv_preds(Q, np.array(P))
+        mvtP = util.mv_preds(self.posterior_Q, np.array(P))
 
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
         return (mvtP, util.risk(mvtP, Y)) if Y is not None else mvtP
@@ -236,12 +234,12 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         
         m = self.nb_estimators
         # Compute the Kullback-Leibler divergences
-        with torch.no_grad():
-            prior_P = uniform_distribution(m).to(device)
-            if alpha==1:
-                DIV_QP = kl(self.posterior_Q, prior_P).item()
-            else:
-                DIV_QP = rd(self.posterior_Q, prior_P, alpha).item()
+        # with torch.no_grad():
+        prior_P = uniform_distribution(m).detach().cpu().numpy()
+        if alpha==1:
+            DIV_QP = kl_np(self.posterior_Q, prior_P)
+        else:
+            DIV_QP = rd_np(self.posterior_Q, prior_P, alpha)
         
         emp_grisk, ng = self.gibbs_risk(labeled_data, incl_oob)
         eS, ne = self.joint_error(labeled_data, incl_oob)
@@ -295,15 +293,15 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
             return (bounds.cb.C_TND(emp_grisk, eS, ng, ne, DIV_QP),) + stats
         
     def set_posteriors(self, posterior_Q):
-        self.posterior_Q = posterior_Q
+        self.posterior_Q = posterior_Q.detach().cpu().numpy()
     
     def clear_posteriors(self):
-        self.posterior_Q = uniform_distribution(self.nb_estimators).to(device)
+        self.posterior_Q = uniform_distribution(self.nb_estimators).detach().cpu().numpy()
 
 
     def gibbs_risk(self, labeled_data=None, incl_oob=True):
         risks, ns = self.risks(labeled_data, incl_oob)
-        posterior_Q = self.posterior_Q.cpu().detach().numpy()
+        posterior_Q = self.posterior_Q
         emp_risk = np.average(risks/ns, weights=posterior_Q, axis=0)
         return emp_risk, np.min(ns)
     
@@ -333,7 +331,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
     def joint_error(self, labeled_data=None, incl_oob=True):
         joint_errors, nt = self.joint_errors(labeled_data, incl_oob)
         
-        posterior_Q = self.posterior_Q.cpu().detach().numpy()
+        posterior_Q = self.posterior_Q
         eS = np.average(
             np.average(joint_errors/nt, weights=posterior_Q, axis=0),
             weights=posterior_Q)
@@ -367,7 +365,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
     def disagreement(self, unlabeled_data=None, incl_oob=True):
         dis, nd = self.disagreements(unlabeled_data, incl_oob)
         
-        posterior_Q = self.posterior_Q.cpu().detach().numpy()
+        posterior_Q = self.posterior_Q
         emp_dis = np.average(
             np.average(dis/nd, weights=posterior_Q, axis=0), weights=posterior_Q)
 

@@ -20,7 +20,7 @@ from ..tools import (renyi_divergence as rd,
                         LogBarrierFunction as lbf,
                         solve_kl_sup)
 
-def PBkl(empirical_gibbs_risk, m, DIV_QP, delta=0.05):
+def PBkl(empirical_gibbs_risk, m, DIV_QP, delta=0.05): 
     """ PAC Bound ZERO of Germain, Lacasse, Laviolette, Marchand and Roy (JMLR 2015)
 
     Compute a PAC-Bayesian upper bound on the Bayes risk by
@@ -54,17 +54,18 @@ def PBkl_MV(empirical_gibbs_risk, m, DIV_QP, DIV_rhopi, delta=0.05):
     - delta: The confidence parameter (default is 0.05).
     
     Returns:
-    - The calculated Multi view PAC Bound ZERO.
+    - The calculated Multi view PAC Bo
+    @und ZERO.
     """
 
     xi_m = 2*sqrt(m)
     right_hand_side = (DIV_QP + DIV_rhopi + log( xi_m / delta ) ) / m
-    print(f"{right_hand_side=}, {empirical_gibbs_risk=}")
+    # print(f"{right_hand_side=}, {empirical_gibbs_risk=}")
     sup_R = min(0.5, solve_kl_sup(empirical_gibbs_risk, right_hand_side))
 
     return 2 * sup_R
 
-def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None, alpha=1.1):
+def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb=None,  alpha=1.1, alpha_v=None):
     """
     Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 2.
 
@@ -77,7 +78,8 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
         - n (int): The number of samples.
         - delta (float): The confidence parameter.
         - lamb (float): lambda.
-        - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - alpha (float, optional): The Rényi divergence order. Default is 1.1. (optimizable if alpha_v is not None)
+        - alpha_v (list, optional): A list of optimizable Rényi divergence orders for each view. Default is None.
 
     Returns:
         -  tensor: The computed loss value.
@@ -94,15 +96,19 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
     emp_risks = [torch.sum(view * q) for view, q in zip(emp_risks_views, softmax_posterior_Qv)]
     emp_mv_risk = torch.sum(torch.stack(emp_risks) * softmax_posterior_rho)
     # print(f"{emp_mv_risk.item()=}")
-
-    if alpha != 1:
-        # Compute the Rényi divergences
-        DIV_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+    if alpha_v is not None:
+        # Compute the Rényi divergences with view-specific alpha
+        DIV_QP = torch.sum(torch.stack([rd(q, p, a)  for q, p, a in zip(softmax_posterior_Qv, prior_Pv, alpha_v)]) * softmax_posterior_rho)
         DIV_rhopi = rd(softmax_posterior_rho, prior_pi, alpha)
     else:
-        # Compute the KL divergences
-        DIV_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
-        DIV_rhopi = kl(softmax_posterior_rho, prior_pi)
+        if alpha != 1:
+            # Compute the Rényi divergences
+            DIV_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+            DIV_rhopi = rd(softmax_posterior_rho, prior_pi, alpha)
+        else:
+            # Compute the KL divergences
+            DIV_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+            DIV_rhopi = kl(softmax_posterior_rho, prior_pi)
 
     
     if lamb is None:
@@ -113,7 +119,7 @@ def compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prio
     return 2.0*loss, loss
 
 
-def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, alpha=1.1, t=100):
+def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05, eps=10**-9, optimise_lambda=False, optimize_alpha=False, alpha=1.1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -123,7 +129,8 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
         - delta (float, optional): The confidence level. Default is 0.05.
         - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
         - optimise_lambda (bool, optional): Whether to optimize the lambda parameter. Default is False.
-        - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - optimize_alpha (bool, optional): Whether to optimize the alpha parameter. Default is False.
+        - alpha (float, optional): The Rényi divergence order. Default is 1.1 (won't be used if optimize_alpha is True).
         - t (float, optional): Controls the steepness and sensitivity of the barrier. Higher values make the barrier more aggressive. Default is 100.
 
     Returns:
@@ -147,6 +154,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
     emp_risks_views = torch.from_numpy(emp_risks_views).to(device)
     
     lamb = None
+    alpha_v = None
     if optimise_lambda:
         # Initialisation of lambda with a random value between 0 and 2 (exclusive)
         lamb_tensor = torch.empty(1).to(device).requires_grad_()
@@ -154,9 +162,31 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
         torch.nn.init.uniform_(lamb_tensor, 0.0001, 1.9999)
         lamb = torch.nn.Parameter(lamb_tensor)
         
-        all_parameters = list(posterior_Qv) + [posterior_rho, lamb]
+        if optimize_alpha:
+            # Initialisation of beta with zeros tensor with the size as the number of views, hence alpha starts at 1 + exp(0) = 2
+            beta_v_tensor = torch.zeros_like(prior_pi).to(device).requires_grad_()
+            beta_v = torch.nn.Parameter(beta_v_tensor)
+            
+            # For the hyper distributions
+            beta_tensor = torch.zeros(1).to(device).requires_grad_()
+            beta = torch.nn.Parameter(beta_tensor)
+        
+            all_parameters = list(posterior_Qv) + [posterior_rho, lamb, beta_v, beta]
+        else:
+            all_parameters = list(posterior_Qv) + [posterior_rho, lamb]
     else:
-        all_parameters = list(posterior_Qv) + [posterior_rho] 
+        if optimize_alpha:
+            # Initialisation of beta with zeros tensor with the size as the number of views, hence alpha starts at 1 + exp(0) = 2
+            beta_v_tensor = torch.zeros_like(prior_pi).to(device).requires_grad_()
+            beta_v = torch.nn.Parameter(beta_v_tensor)
+            
+            # For the hyper distributions
+            beta_tensor = torch.zeros(1).to(device).requires_grad_()
+            beta = torch.nn.Parameter(beta_tensor)
+            
+            all_parameters = list(posterior_Qv) + [posterior_rho, beta_v, beta]
+        else:
+            all_parameters = list(posterior_Qv) + [posterior_rho] 
         
     # optimizer = COCOB(all_parameters)
     optimizer = torch.optim.AdamW(all_parameters, lr=0.1, weight_decay=0.05)
@@ -168,8 +198,12 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
     for i in range(max_iter):
         optimizer.zero_grad()
     
+        if optimize_alpha:
+            alpha_v = 1 + torch.exp(beta_v)
+            alpha = 1 + torch.exp(beta)
+
         # Calculating the loss
-        loss, constraint = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha)
+        loss, constraint = compute_mv_loss(emp_risks_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, n, delta, lamb, alpha, alpha_v)
         loss = loss + log_barrier(constraint-0.5)
         loss.backward() # Backpropagation
         
@@ -193,7 +227,7 @@ def optimizeLamb_mv_torch(emp_risks_views, n, device, max_iter=1000, delta=0.05,
     with torch.no_grad():
         softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
         softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
-    return softmax_posterior_Qv, softmax_posterior_rho, lamb
+    return softmax_posterior_Qv, softmax_posterior_rho, lamb, alpha_v, alpha
 
 
 

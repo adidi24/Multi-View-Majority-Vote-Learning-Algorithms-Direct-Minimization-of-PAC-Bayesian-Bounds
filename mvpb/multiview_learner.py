@@ -11,7 +11,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # import mvpb.bounds_alpha1_KL as bkl
 import mvpb.bounds as bounds
 import mvpb.util as util
-from .bounds.tools import renyi_divergence as rd, kl
+from .bounds.tools import renyi_divergence as rd, renyi_divergence_numpy as rd_np, kl, KL as kl_np
 from .util import uniform_distribution
 
 from .deepTree import DeepNeuralDecisionForests
@@ -42,8 +42,9 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         self.lamb2_eS_dS = None
         self.lamb_dS = None
         self.gamma_dS = None
+        self.alpha_v = None
+        self.alpha = None
         self.use_dndf = use_dndf
-        
         
     def fit(self, X, y):
         # Check that X and y have correct shape
@@ -101,8 +102,8 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         """
         check_is_fitted(self)
         
-        rho = self.posterior_rho.cpu().data.numpy()
-        posteriors_qs = [p.cpu().data.numpy() for p in self.posterior_Qv]
+        # rho = self.posterior_rho.cpu().data.numpy()
+        # posteriors_qs = [p.cpu().data.numpy() for p in self.posterior_Qv]
         
         for i in range(self.nb_views):
             if Y is not None:
@@ -119,7 +120,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         for v in range(self.nb_views):
             mys.append([est.predict(Xs[v]).astype(int) for est in self._estimators_views[v]])
         
-        mvP = util.MV_preds(rho, np.array(posteriors_qs), mys)
+        mvP = util.MV_preds(self.posterior_rho, np.array(self.posterior_Qv), mys)
 
         # print(f"Xs shapes: {[x.shape for x in Xs]=}\n\n {Y.shape=}\n\n {[y.shape for y in ys]=}\n\n {len(ys)=}\n\n {len(mvP)=}")
         return (mvP, util.risk(mvP, Y)) if Y is not None else mvP
@@ -131,6 +132,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
                      incl_oob=True,
                      max_iter=1000,
                      optimise_lambda_gamma=False,
+                     optimize_alpha=False,
                      alpha=1,
                      t=100):
         """
@@ -157,9 +159,8 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             raise Exception(f'Warning, optimize_rho: unknown bound {bound}! expected one of {allowed_bounds}')
         if labeled_data is None and not incl_oob:
             raise Exception('Warning, stats: Missing data! expected labeled_data or incl_oob=True')
-
         check_is_fitted(self)
-        
+
         ulX =  None
         if unlabeled_data is not None:
             if labeled_data is None:
@@ -185,74 +186,94 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         nd = torch.tensor(np.min(ns_views_d))
         ne = torch.tensor(np.min(ns_views_t))
 
-        
         if bound == 'PBkl':
-            posterior_Qv, posterior_rho, lamb = bounds.fo.optimizeLamb_mv_torch(grisks_views, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, lamb, alpha_v, alpha = bounds.fo.optimizeLamb_mv_torch(grisks_views, ng, device, max_iter=max_iter,  optimise_lambda=optimise_lambda_gamma, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             # print(f"{lamb=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb = lamb
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
 
         elif bound == 'PBkl_inv':
-            posterior_Qv, posterior_rho = bounds.fo.optimizeKLinv_mv_torch(grisks_views, ng, device, max_iter=max_iter, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, alpha_v, alpha = bounds.fo.optimizeKLinv_mv_torch(grisks_views, ng, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND_DIS':
-            posterior_Qv, posterior_rho, lamb1_eS_dS, lamb2_eS_dS = bounds.fo.optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, lamb1_eS_dS, lamb2_eS_dS, alpha_v, alpha = bounds.fo.optimizeTND_DIS_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, optimise_lambdas=optimise_lambda_gamma, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb1_eS_dS = lamb1_eS_dS
             self.lamb2_eS_dS = lamb2_eS_dS
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND_DIS_inv':
-            posterior_Qv, posterior_rho = bounds.fo.optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, alpha_v, alpha = bounds.fo.optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'TND':
-            posterior_Qv, posterior_rho, lamb_eS = bounds.so.optimizeTND_mv_torch(eS_views, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, lamb_eS, alpha_v, alpha = bounds.so.optimizeTND_mv_torch(eS_views, ne, device, max_iter=max_iter, optimise_lambda=optimise_lambda_gamma, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             # print(f"{lamb_eS=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb_eS = lamb_eS
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
 
         elif bound == 'TND_inv':
-            posterior_Qv, posterior_rho= bounds.so.optimizeTND_Inv_mv_torch(eS_views, ne, device, max_iter=max_iter, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, alpha_v, alpha = bounds.so.optimizeTND_Inv_mv_torch(eS_views, ne, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'DIS':
-            posterior_Qv, posterior_rho, lamb_dS, gamma_dS = bounds.so.optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, lamb_dS, gamma_dS, alpha_v, alpha = bounds.so.optimizeDIS_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimise_lambda_gamma=optimise_lambda_gamma, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             # print(f"{lamb_dS=}, {gamma_dS=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb_dS = lamb_dS
             self.gamma_dS = gamma_dS
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'DIS_inv':
-            posterior_Qv, posterior_rho = bounds.so.optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, alpha_v, alpha = bounds.so.optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'Cbound':
-            posterior_Qv, posterior_rho = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, alpha=alpha, t=1)
+            print("Optimizing C-bound")
+            posterior_Qv, posterior_rho, alpha_v, alpha = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=1)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         elif bound == 'C_TND':
-            posterior_Qv, posterior_rho = bounds.cb.optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=max_iter, alpha=alpha, t=t)
+            posterior_Qv, posterior_rho, alpha_v, alpha = bounds.cb.optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
+            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
         else:
@@ -278,78 +299,99 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             if labeled_data is not None:
                 ulX = labeled_data[0]
             
-        # Compute the Kullback-Leibler divergences
-        with torch.no_grad():
-            prior_pi = uniform_distribution(v).to(device)
-            prior_Pv = [uniform_distribution(m).to(device)]*v
-            if alpha==1:
-                DIV_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
-                DIV_QP = torch.sum(torch.stack(DIV_QPs) * self.posterior_rho)
-                # print(f"{self.posterior_rho=},  {prior_pi=}")
-                DIV_rhopi = kl(self.posterior_rho, prior_pi)
+        # with torch.no_grad():
+        prior_pi = uniform_distribution(v)
+        prior_pi = prior_pi.detach().cpu().numpy()
+        prior_Pv = [uniform_distribution(m)]*v
+        prior_Pv = [p.detach().cpu().numpy() for p in prior_Pv]
+        
+        if self.alpha_v is not None:
+            # Compute the Rényi divergences with view-specific alpha
+            DIV_QPs = [rd_np(q, p, a)  for q, p, a in zip(self.posterior_Qv, prior_Pv, self.alpha_v)]
+            DIV_QP = np.sum(np.stack(DIV_QPs) * self.posterior_rho)
+            DIV_rhopi = rd_np(self.posterior_rho, prior_pi, self.alpha)
+        else:
+            if alpha != 1:
+                # Compute the Rényi divergences
+                DIV_QPs = [rd_np(q, p, alpha)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+                DIV_QP = np.sum(np.stack(DIV_QPs) * self.posterior_rho)
+                DIV_rhopi = rd_np(self.posterior_rho, prior_pi, alpha)
             else:
-                DIV_QPs = [rd(q, p, alpha)  for q, p in zip(self.posterior_Qv, prior_Pv)]
-                DIV_QP = torch.sum(torch.stack(DIV_QPs) * self.posterior_rho)
-                DIV_rhopi = rd(self.posterior_rho, prior_pi, alpha)
+                # Compute the KL divergences
+                DIV_QPs = [kl_np(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+                DIV_QP = np.sum(np.stack(DIV_QPs) * self.posterior_rho)
+                # print(f"{self.posterior_rho=},  {prior_pi=}")
+                DIV_rhopi = kl_np(self.posterior_rho, prior_pi)
+            
+        # TODO: Remove this block after testing
+        # if alpha==1:
+        #     DIV_QPs = [kl(q, p)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+        #     DIV_QP = torch.sum(torch.stack(DIV_QPs) * self.posterior_rho)
+        #     # print(f"{self.posterior_rho=},  {prior_pi=}")
+        #     DIV_rhopi = kl(self.posterior_rho, prior_pi)
+        # else:
+        #     DIV_QPs = [rd(q, p, alpha)  for q, p in zip(self.posterior_Qv, prior_Pv)]
+        #     DIV_QP = torch.sum(torch.stack(DIV_QPs) * self.posterior_rho)
+        #     DIV_rhopi = rd(self.posterior_rho, prior_pi, alpha)
         # print(f"{DIV_rhopi=},  {DIV_QP=}")
             
         _, emp_mv_risk, ng = self.mv_risk(labeled_data, incl_oob)
         _, eS, ne = self.mv_expected_joint_error(labeled_data, incl_oob)
         _, dS, nd = self.mv_expected_disagreement(ulX, incl_oob)
 
-        stats = (emp_mv_risk, eS, dS, DIV_QP.item(), DIV_rhopi.item(), ng, ne, nd,)
+        stats = (emp_mv_risk, eS, dS, DIV_QP, DIV_rhopi, ng, ne, nd,)
 
         if bound == 'Uniform':
             # Compute the MV PB-lambda bound.
-            return (bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP, DIV_rhopi),) + stats
             
         if bound == 'PBkl':
             # Compute the MV PB-lambda bound.
-            return (bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.fo.PBkl_MV(emp_mv_risk, ng, DIV_QP, DIV_rhopi),) + stats
             
         elif bound == 'PBkl_inv':
             # Compute the MV PB-lambda bound.
-            return (bounds.fo.KLInv_MV(emp_mv_risk, ng, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.fo.KLInv_MV(emp_mv_risk, ng, DIV_QP, DIV_rhopi),) + stats
             
         elif bound == 'TND_DIS':
             # Compute the MV TND_DIS bound.
-            return (bounds.fo.TND_DIS_MV(eS, dS, ne, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.fo.TND_DIS_MV(eS, dS, ne, nd, DIV_QP, DIV_rhopi),) + stats
             
         elif bound == 'TND_DIS_inv':
             # Compute the MV TND_DIS bound.
-            return (bounds.fo.TND_DIS_Inv_MV(eS, dS, ne, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.fo.TND_DIS_Inv_MV(eS, dS, ne, nd, DIV_QP, DIV_rhopi),) + stats
         
         elif bound == 'TND':
             # Compute the MV TND bound.
-            return (bounds.so.TND_MV(eS, ne, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.so.TND_MV(eS, ne, DIV_QP, DIV_rhopi),) + stats
 
         elif bound == 'TND_inv':
             # Compute the MV TND Inv bound.
-            return (bounds.so.TND_Inv_MV(eS, ne, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.so.TND_Inv_MV(eS, ne, DIV_QP, DIV_rhopi),) + stats
             
         elif bound == 'DIS':
             # Compute the MV DIS bound for
-            return (bounds.so.DIS_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.so.DIS_MV(emp_mv_risk, dS, ng, nd, DIV_QP, DIV_rhopi),) + stats
         
         elif bound == 'DIS_inv':
             # Compute the MV DIS bound.
-            return (bounds.so.DIS_Inv_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.so.DIS_Inv_MV(emp_mv_risk, dS, ng, nd, DIV_QP, DIV_rhopi),) + stats
 
         elif bound == 'Cbound':
             # Compute the MV C-bound.
-            return (bounds.cb.Cbound_MV(emp_mv_risk, dS, ng, nd, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.cb.Cbound_MV(emp_mv_risk, dS, ng, nd, DIV_QP, DIV_rhopi),) + stats
         
         elif bound == 'C_TND':
             # Compute the MV C-tandem bound.
-            return (bounds.cb.C_TND_MV(emp_mv_risk, eS, ng, ne, DIV_QP.item(), DIV_rhopi.item()),) + stats
+            return (bounds.cb.C_TND_MV(emp_mv_risk, eS, ng, ne, DIV_QP, DIV_rhopi),) + stats
         
     def set_posteriors(self, posterior_rho, posterior_Qv):
-        self.posterior_rho = posterior_rho
-        self.posterior_Qv = posterior_Qv
+        self.posterior_rho = posterior_rho.detach().cpu().numpy()
+        self.posterior_Qv = [param.detach().cpu().numpy() for param in posterior_Qv]
     
     def clear_posteriors(self):
-        self.posterior_rho = uniform_distribution(self.nb_views).to(device)
-        self.posterior_Qv = [uniform_distribution(self.nb_estimators).to(device) for _ in range(self.nb_views)]
+        self.posterior_rho = uniform_distribution(self.nb_views).detach().cpu().numpy()
+        self.posterior_Qv = [uniform_distribution(self.nb_estimators).detach().cpu().numpy() for _ in range(self.nb_views)]
 
     def risks(self, data=None, incl_oob=True):
         check_is_fitted(self)
@@ -386,9 +428,9 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         # print(f"After {grisks_views=}")
         emp_rv = []
         for q, rv in zip(self.posterior_Qv, grisks_views):
-            emp_rv.append(np.average(rv, weights=q.cpu().detach().numpy(), axis=0))
+            emp_rv.append(np.average(rv, weights=q, axis=0))
         
-        emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho.cpu().detach().numpy(), axis=0)
+        emp_mv_risk = np.average(emp_rv, weights=self.posterior_rho, axis=0)
         # print(f"Finally {emp_mv_risk=}")
         return np.array(emp_rv), emp_mv_risk, np.min(ns_views)
 
@@ -399,14 +441,14 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         
         eS_v = np.zeros((self.nb_views, self.nb_views))
         for i in range(self.nb_views):
-            qv1 = self.posterior_Qv[i].cpu().detach().numpy()
+            qv1 = self.posterior_Qv[i]
             for j in range(self.nb_views):
-                qv2 = self.posterior_Qv[j].cpu().detach().numpy()
+                qv2 = self.posterior_Qv[j]
                 eS_v[i, j] = np.average(np.average(multiview_joint_errors[i, j], weights=qv1, axis=0), weights=qv2)
                 
         eS = np.average(
-            np.average(eS_v, weights=self.posterior_rho.cpu().detach().numpy(), axis=0),
-            weights=self.posterior_rho.cpu().detach().numpy())
+            np.average(eS_v, weights=self.posterior_rho, axis=0),
+            weights=self.posterior_rho)
 
         return eS_v, eS, np.min(n2)
     
@@ -427,6 +469,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             P = np.array([[est.predict(X).astype(int) for est in estimators] for X, estimators in zip(Xs, self._estimators_views)])
             multiview_joint_errors+= util.multiview_joint_errors(P,  Y)
             n2 += Xs[0].shape[0]
+    
 
         return multiview_joint_errors, n2
     
@@ -437,14 +480,14 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         
         dS_v = np.zeros((self.nb_views, self.nb_views))
         for i in range(self.nb_views):
-            qv1 = self.posterior_Qv[i].cpu().detach().numpy()
+            qv1 = self.posterior_Qv[i]
             for j in range(self.nb_views):
-                qv2 = self.posterior_Qv[j].cpu().detach().numpy()
+                qv2 = self.posterior_Qv[j]
                 dS_v[i, j] = np.average(np.average(multiview_disagreements[i, j], weights=qv1, axis=0), weights=qv2)
                 
         dS = np.average(
-            np.average(dS_v, weights=self.posterior_rho.cpu().detach().numpy(), axis=0),
-            weights=self.posterior_rho.cpu().detach().numpy())
+            np.average(dS_v, weights=self.posterior_rho, axis=0),
+            weights=self.posterior_rho)
 
         return dS_v, dS, np.min(n2)
     

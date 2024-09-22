@@ -63,7 +63,7 @@ def TND_DIS_Inv(eS, dS, ne, nd, DIV_QP, delta=0.05):
     return b
 
 
-def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, ne, nd, delta, alpha=1.1):
+def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, ne, nd, delta, alpha=1.1, alpha_v=None):
     """
      Compute the loss function for the Multi-View Majority Vote Learning algorithm in theorem 4.5
 
@@ -78,7 +78,8 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
         - nd (int): The number of samples for the disagreement.
         - delta (float): The confidence parameter.
         - lamb (float): lambda.
-        - alpha (float, optional): The Rényi divergence order. Default is 1.1.
+        - alpha (float, optional): The Rényi divergence order. Default is 1.1. (optimizable if alpha_v is not None)
+        - alpha_v (list, optional): A list of optimizable Rényi divergence orders for each view. Default is None.
 
 
      Returns:
@@ -107,14 +108,19 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
             dis_v[i, j] = torch.sum(torch.sum(dS_views[i, j]*softmax_posterior_Qv[i], dim=0) * softmax_posterior_Qv[j], dim=0)
     dS_mv =  torch.sum(torch.sum(dis_v*softmax_posterior_rho, dim=0) * softmax_posterior_rho, dim=0)
 
-    if alpha != 1:
-        # Compute the Rényi divergences
-        DIV_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+    if alpha_v is not None:
+        # Compute the Rényi divergences with view-specific alpha
+        DIV_QP = torch.sum(torch.stack([rd(q, p, a)  for q, p, a in zip(softmax_posterior_Qv, prior_Pv, alpha_v)]) * softmax_posterior_rho)
         DIV_rhopi = rd(softmax_posterior_rho, prior_pi, alpha)
     else:
-        # Compute the KL divergences
-        DIV_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
-        DIV_rhopi = kl(softmax_posterior_rho, prior_pi)
+        if alpha != 1:
+            # Compute the Rényi divergences
+            DIV_QP = torch.sum(torch.stack([rd(q, p, alpha)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+            DIV_rhopi = rd(softmax_posterior_rho, prior_pi, alpha)
+        else:
+            # Compute the KL divergences
+            DIV_QP = torch.sum(torch.stack([kl(q, p)  for q, p in zip(softmax_posterior_Qv, prior_Pv)]) * softmax_posterior_rho)
+            DIV_rhopi = kl(softmax_posterior_rho, prior_pi)
     
     klinv = klInvFunction.apply
     phi_e = (2.0*(DIV_QP + DIV_rhopi) + torch.log((4.0 * torch.sqrt(ne)) / delta)) / ne
@@ -128,7 +134,7 @@ def compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, p
     return loss, loss_e, loss_d
 
 
-def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, alpha=1.1, t=100):
+def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=1000, delta=0.05, eps=10**-9, optimize_alpha=False, alpha=1.1, t=100):
     """
     Optimize the value of `lambda` using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
@@ -139,8 +145,9 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
         - nd (int): The number of samples for the disagreement.
         - delta (float, optional): The confidence level. Default is 0.05.
         - eps (float, optional): A small value for convergence criteria. Defaults to 10**-9.
+        - optimize_alpha (bool, optional): Whether to optimize the alpha parameter. Default is False.
         - alpha (float, optional): The Rényi divergence order. Default is 1.1.
-        - t (int, optional): The Rényi divergence order. Default is 1.
+        - t (int, optional): The Rényi divergence order. Default is 100.
 
     Returns:
         - tuple: A tuple containing the optimized posterior distributions for each view (posterior_Qv) and the optimized hyper-posterior distribution (posterior_rho).
@@ -168,7 +175,19 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
     eS_views = torch.from_numpy(eS_views).to(device)
     dS_views = torch.from_numpy(dS_views).to(device)
     
-    all_parameters = list(posterior_Qv) + [posterior_rho]
+    alpha_v = None
+    if optimize_alpha:
+        # Initialisation of beta with zeros tensor with the size as the number of views, hence alpha starts at 1 + exp(0) = 2
+        beta_v_tensor = torch.zeros_like(prior_pi).to(device).requires_grad_()
+        beta_v = torch.nn.Parameter(beta_v_tensor)
+        
+        # For the hyper distributions
+        beta_tensor = torch.zeros(1).to(device).requires_grad_()
+        beta = torch.nn.Parameter(beta_tensor)
+    
+        all_parameters = list(posterior_Qv) + [posterior_rho, beta_v, beta]
+    else:
+        all_parameters = list(posterior_Qv) + [posterior_rho]
         
     # Optimizer
     # optimizer = COCOB(all_parameters)
@@ -179,9 +198,13 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
     # Optimisation loop
     for i in range(max_iter):
         optimizer.zero_grad()
+        
+        if optimize_alpha:
+            alpha_v = 1 + torch.exp(beta_v)
+            alpha = 1 + torch.exp(beta)
     
         # Calculating the loss
-        loss, constraint_joint_error, constraint_disagreement = compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, ne, nd, delta, alpha)
+        loss, constraint_joint_error, constraint_disagreement = compute_mv_loss(eS_views, dS_views, posterior_Qv, posterior_rho, prior_Pv, prior_pi, ne, nd, delta, alpha, alpha_v)
         loss += log_barrier(constraint_joint_error-0.25) + log_barrier(constraint_disagreement-(2*(torch.sqrt(constraint_joint_error)-constraint_joint_error)))
         loss.backward() # Backpropagation
     
@@ -202,7 +225,7 @@ def optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=10
     with torch.no_grad():
         softmax_posterior_Qv = [torch.softmax(q, dim=0) for q in posterior_Qv]
         softmax_posterior_rho = torch.softmax(posterior_rho, dim=0)
-    return softmax_posterior_Qv, softmax_posterior_rho
+    return softmax_posterior_Qv, softmax_posterior_rho, alpha_v, alpha
 
 
 def compute_loss(eS, dS, posterior_Q, prior_P, ne, nd, delta, alpha=1.1):
