@@ -6,7 +6,7 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.utils import check_random_state
 
 import torch
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if not torch.cuda.is_available() else "cpu")
 
 # import mvpb.bounds_alpha1_KL as bkl
 import mvpb.bounds as bounds

@@ -146,7 +146,7 @@ def compute_mv_loss(grisks_views, eS_views, posterior_Qv, posterior_rho, prior_P
     return loss, loss_r_max, loss_e_max, loss_r_min, loss_e_min
 
 
-def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, optimize_alpha=False, alpha=1.1, t=100):
+def optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=1000, delta=0.05, eps=10**-9, optimize_alpha=False, alpha=1.1, t=10):
     """
     Optimization using Pytorch for Multi-View Majority Vote Learning Algorithms.
 
