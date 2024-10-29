@@ -137,8 +137,8 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
         X, y = check_X_y(X, y)
         # Store the classes seen during fit
         self.n_class = len(unique_labels(y))
-        self.X_ = torch.from_numpy(X).type(torch.FloatTensor)
-        self.y_ = torch.from_numpy(y).type(torch.LongTensor)
+        self.X_ = torch.from_numpy(X)
+        self.y_ = torch.from_numpy(y)
 
         # classifier
         self.model = DeepTree(self.depth, self.n_in_feature, self.used_feature_rate, self.n_class)
@@ -167,7 +167,7 @@ class DeepNeuralDecisionForests(BaseEstimator, ClassifierMixin):
     def predict(self, X):
         check_is_fitted(self)
         X = check_array(X)
-        X_tensor = torch.from_numpy(X).type(torch.FloatTensor)
+        X_tensor = torch.from_numpy(X)
         X_tensor = X_tensor.to(device)
 
         self.model.eval()

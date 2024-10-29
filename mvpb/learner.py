@@ -64,7 +64,7 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
         self.X_ = X
         self.y_ = y
         
-        preds = []
+        #preds = []
         n = self.X_.shape[0]  # Number of samples
         
         for est in self._estimators:
@@ -76,20 +76,20 @@ class MajorityVoteLearner(BaseEstimator, ClassifierMixin):
                 if np.unique(t_Y).shape[0] == len(self.classes_):
                     break
 
-            oob_idx = np.delete(np.arange(n), np.unique(t_idx))
-            oob_X = self.X_[oob_idx]
+            #oob_idx = np.delete(np.arange(n), np.unique(t_idx))
+            #oob_X = self.X_[oob_idx]
             
             est = est.fit(t_X, t_Y)  # Fit this estimator
-            oob_P = est.predict(oob_X)  # Predict on OOB
+            #oob_P = est.predict(oob_X)  # Predict on OOB
 
-            M_est = np.zeros(self.y_.shape)
-            P_est = np.zeros(self.y_.shape)
-            M_est[oob_idx] = 1
-            P_est[oob_idx] = oob_P
-            preds.append((M_est, P_est))
+            #M_est = np.zeros(self.y_.shape)
+            #P_est = np.zeros(self.y_.shape)
+            #M_est[oob_idx] = 1
+            #P_est[oob_idx] = oob_P
+            #preds.append((M_est, P_est))
             
         # print(f'View {i+1}/{self.nb} done!')
-        self._OOB = (preds, self.y_)
+        #self._OOB = (preds, self.y_)
         return self
 
     def predict(self, Xs, Y=None):

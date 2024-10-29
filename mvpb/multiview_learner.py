@@ -5,6 +5,8 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.utils.multiclass import unique_labels
 from sklearn.utils import check_random_state
 
+from tqdm.notebook import trange
+
 import torch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -66,8 +68,8 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
         self.X_ = X
         self.y_ = y
         
-        for i in range(self.nb_views):
-            preds = []
+        for i in trange(self.nb_views):
+            #preds = []
             n = self.X_[i].shape[0]  # Number of samples
             
             for est in self._estimators_views[i]:
@@ -79,20 +81,20 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
                     if np.unique(t_Y).shape[0] == len(self.classes_):
                         break
     
-                oob_idx = np.delete(np.arange(n), np.unique(t_idx))
-                oob_X = self.X_[i][oob_idx]
+                #oob_idx = np.delete(np.arange(n), np.unique(t_idx))
+                #oob_X = self.X_[i][oob_idx]
                 
                 est = est.fit(t_X, t_Y)  # Fit this estimator
-                oob_P = est.predict(oob_X)  # Predict on OOB
+                #oob_P = est.predict(oob_X)  # Predict on OOB
     
-                M_est = np.zeros(self.y_.shape)
-                P_est = np.zeros(self.y_.shape)
-                M_est[oob_idx] = 1
-                P_est[oob_idx] = oob_P
-                preds.append((M_est, P_est))
+                #M_est = np.zeros(self.y_.shape)
+                #P_est = np.zeros(self.y_.shape)
+                #M_est[oob_idx] = 1
+                #P_est[oob_idx] = oob_P
+                #preds.append((M_est, P_est))
                 
             # print(f'View {i+1}/{self.nb_views} done!')
-            self._OOB.append((preds, self.y_))
+            #self._OOB.append((preds, self.y_))
         return self
 
     def predict_MV(self, Xs, Y=None):
@@ -192,7 +194,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             # print(f"{lamb=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb = lamb
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
 
@@ -200,7 +202,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             posterior_Qv, posterior_rho, alpha_v, alpha = bounds.fo.optimizeKLinv_mv_torch(grisks_views, ng, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -210,7 +212,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb1_eS_dS = lamb1_eS_dS
             self.lamb2_eS_dS = lamb2_eS_dS
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -218,7 +220,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             posterior_Qv, posterior_rho, alpha_v, alpha = bounds.fo.optimizeTND_DIS_inv_mv_torch(eS_views, dS_views, ne, nd, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -228,7 +230,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             # print(f"{lamb_eS=}")
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb_eS = lamb_eS
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
 
@@ -236,7 +238,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             posterior_Qv, posterior_rho, alpha_v, alpha = bounds.so.optimizeTND_Inv_mv_torch(eS_views, ne, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -247,7 +249,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             self.set_posteriors(posterior_rho, posterior_Qv)
             self.lamb_dS = lamb_dS
             self.gamma_dS = gamma_dS
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -255,7 +257,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             posterior_Qv, posterior_rho, alpha_v, alpha = bounds.so.optimizeDIS_Inv_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -264,7 +266,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             posterior_Qv, posterior_rho, alpha_v, alpha = bounds.cb.optimizeCBound_mv_torch(grisks_views, dS_views, ng, nd, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=1)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
@@ -272,7 +274,7 @@ class MultiViewMajorityVoteLearner(BaseEstimator, ClassifierMixin):
             posterior_Qv, posterior_rho, alpha_v, alpha = bounds.cb.optimizeCTND_mv_torch(grisks_views, eS_views, ng, ne, device, max_iter=max_iter, optimize_alpha=optimize_alpha, alpha=alpha, t=t)
             
             self.set_posteriors(posterior_rho, posterior_Qv)
-            self.alpha_v = alpha_v.detach().cpu().numpy()
+            self.alpha_v = alpha_v.detach().cpu().numpy() if isinstance(alpha_v, torch.Tensor) and alpha_v is not None else alpha_v
             self.alpha = alpha.detach().cpu().numpy() if isinstance(alpha, torch.Tensor) else alpha
             return posterior_Qv, posterior_rho
         
