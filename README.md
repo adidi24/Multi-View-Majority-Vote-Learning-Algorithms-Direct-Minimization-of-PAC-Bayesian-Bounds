@@ -1,6 +1,6 @@
 # Multi-View Majority Vote Learning Algorithms: Direct Minimization of Oracle PAC-Bayesian Bounds
 
-This repository is the official implementation of ["Multi-View Majority Vote Learning Algorithms: Direct Minimization of Oracle PAC-Bayesian Bounds"](https://openreview.net/pdf?id=htR4Ecdr2V).
+This repository is the official implementation of ["Multi-View Majority Vote Learning Algorithms: Direct Minimization of Oracle PAC-Bayesian Bounds"]().
 
 The implementation is provided as a module called `mvpb`, which offers an interface for implementing and optimizing PAC-Bayesian bounds specifically designed for multi-view learning.
 
@@ -41,6 +41,7 @@ pip3 install -r requirements.txt
 | ReutersEN         | [ReutersEN](http://membres-lig.imag.fr/grimal/)        | Yes      | 5               | 1200               | 6                 | 22,1 MB   |
 
 > Datasets can be pulled using DVC, and the files can be browsed on [DagsHub](https://dagshub.com/adidi24/Multi-View-Majority-Vote-Learning-Algorithms-Direct-Minimization-of-PAC-Bayesian-Bounds) storage.
+> Or directly from [OSF](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141).
 
 For DVC setup, use the following commands:
 
@@ -59,14 +60,16 @@ dvc pull
 
 Run the cells in the following notebooks:
 - empirical-evaluation-jupyter.ipynb to reproduce the main experiments.
-- empirical-evaluation-dist.ipynb to reproduce the experiments used to compare distributions (before and after adding Gaussian noise to the data).
+- empirical-evaluation-dist.ipynb to reproduce the experiments that compare distributions (before and after adding Gaussian noise to the data).
 - plot.ipynb to reproduce all the plots in the paper.
 
 > All our results can also be found in .csv format under the results directory.
-> We will move the results later to DAGsHub storage.
+> We will move the results to DAGsHub storage later.
 
 ## Acknowledgements
 
-The `mvpb` package is slightly inspired from the implementation from <https://github.com/StephanLorenzen/MajorityVoteBounds.git>.
+The `mvpb` package is slightly inspired by the implementation from <https://github.com/StephanLorenzen/MajorityVoteBounds.git>.
 
-we also took the immplementation of the *Deep Neural Decision Forests(dNDF)* in PyTorch from <https://github.com/jingxil/Neural-Decision-Forests.git> with minor modifications.
+We also took the implementation of the *Deep Neural Decision Forests(dNDF)* in PyTorch from <https://github.com/jingxil/Neural-Decision-Forests.git> with minor modifications.
+
+The inverted-KL optimization code is adapted from <https://github.com/paulviallard/ECML21-PB-CBound>.
