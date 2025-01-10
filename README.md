@@ -40,7 +40,7 @@ pip3 install -r requirements.txt
 | PTB-XL-plus         | [PTB-XL+](https://physionet.org/content/ptb-xl-plus/1.0.1/)        | Yes      | 3               | 21800               | 5 Superclasses                 | 248 MB   |
 | ReutersEN         | [ReutersEN](http://membres-lig.imag.fr/grimal/)        | Yes      | 5               | 1200               | 6                 | 22,1 MB   |
 
-> Datasets can be downloaded directly from [OSF](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141).
+> Datasets can be downloaded directly from [OSF](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141) (put them in `data` directory).
 
 ## Running Experiments
 
@@ -49,7 +49,7 @@ Run the cells in the following notebooks:
 - empirical-evaluation-dist.ipynb to reproduce the experiments that compare distributions (before and after adding Gaussian noise to the data).
 - plot.ipynb to reproduce all the plots in the paper.
 
-> All our results can also be found in .csv format under the results directory.
+> All our results can also be found in .csv format under the `results` directory.
 
 ## Acknowledgements
 
