@@ -1,6 +1,6 @@
 # Multi-View Majority Vote Learning Algorithms: Direct Minimization of Oracle PAC-Bayesian Bounds
 
-This repository is the official implementation of ["Multi-View Majority Vote Learning Algorithms: Direct Minimization of Oracle PAC-Bayesian Bounds"]().
+This repository is the official implementation of "Multi-View Majority Vote Learning Algorithms: Direct Minimization of Oracle PAC-Bayesian Bounds".
 
 The implementation is provided as a module called `mvpb`, which offers an interface for implementing and optimizing PAC-Bayesian bounds specifically designed for multi-view learning.
 
@@ -40,21 +40,7 @@ pip3 install -r requirements.txt
 | PTB-XL-plus         | [PTB-XL+](https://physionet.org/content/ptb-xl-plus/1.0.1/)        | Yes      | 3               | 21800               | 5 Superclasses                 | 248 MB   |
 | ReutersEN         | [ReutersEN](http://membres-lig.imag.fr/grimal/)        | Yes      | 5               | 1200               | 6                 | 22,1 MB   |
 
-> Datasets can be pulled using DVC, and the files can be browsed on [DagsHub](https://dagshub.com/adidi24/Multi-View-Majority-Vote-Learning-Algorithms-Direct-Minimization-of-PAC-Bayesian-Bounds) storage.
-> Or directly from [OSF](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141).
-
-For DVC setup, use the following commands:
-
-```sh
-dvc remote modify origin --local access_key_id your_token 
-dvc remote modify origin --local secret_access_key your_token
-```
-
-Then, to pull the datasets, simply execute:
-
-```sh
-dvc pull
-```
+> Datasets can be downloaded directly from [OSF](https://osf.io/xh5qs/?view_only=966ab35b04bd4e478491038941f7c141).
 
 ## Running Experiments
 
@@ -64,7 +50,6 @@ Run the cells in the following notebooks:
 - plot.ipynb to reproduce all the plots in the paper.
 
 > All our results can also be found in .csv format under the results directory.
-> We will move the results to DAGsHub storage later.
 
 ## Acknowledgements
 
